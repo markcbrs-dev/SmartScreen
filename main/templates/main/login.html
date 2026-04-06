@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - SmartScreen{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Sign in</h5>
+        <form method="post" action="{% url 'login' %}">
+          {% csrf_token %}
+          {% if form.errors %}
+            <div class="alert alert-danger">Please correct the errors below.</div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label for="id_username" class="form-label">Username</label>
+            <input type="text" name="username" class="form-control" id="id_username" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="id_password" class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" id="id_password" required>
+          </div>
+
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="remember" class="form-check-input" id="id_remember">
+            <label class="form-check-label" for="id_remember">Remember me</label>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100">Sign in</button>
+        </form>
+      </div>
+    </div>
+    <p class="text-center mt-3"><a href="{% url 'home' %}">Back to home</a></p>
+  </div>
+</div>
+{% endblock %}

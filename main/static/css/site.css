@@ -1,0 +1,8 @@
+/* Basic site styles for SmartScreen */
+body { background-color: #f8fafc; color: #212529; }
+.card { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.navbar-brand { font-weight: 600; }
+.container { padding-top: 1rem; padding-bottom: 2rem; }
+
+/* Utility */
+.w-100 { width: 100% !important; }

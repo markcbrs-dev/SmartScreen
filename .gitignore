@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+coverage.xml
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+resumes.db
+media/
+staticfiles/
+
+# If using collectstatic
+# staticfiles/
+
+# Environments
+.env
+.venv
+
+# IDEs and editors
+.vscode/
+*.swp
+*~
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pandas/pickle artifacts
+*.pkl
+
+# mypy
+.mypy_cache/
+
+# Byte-compiled / optimized
+__pycache__/
+*.pyc
+
+# Secrets (if used)
+*.pem
+*.key
+
+# End of file

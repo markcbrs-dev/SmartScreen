@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Apply - SmartScreen{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Applicant Information</h5>
+        <form method="post" action="{% url 'apply' %}" enctype="multipart/form-data">
+          {% csrf_token %}
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="id_first_name" class="form-label">First name</label>
+              <input type="text" name="first_name" id="id_first_name" class="form-control" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="id_last_name" class="form-label">Last name</label>
+              <input type="text" name="last_name" id="id_last_name" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="id_contact" class="form-label">Contact number</label>
+            <input type="tel" name="contact_number" id="id_contact" class="form-control" placeholder="e.g. +1-555-555-5555" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="id_email" class="form-label">Email</label>
+            <input type="email" name="email" id="id_email" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="id_resume" class="form-label">Upload resume</label>
+            <input type="file" name="resume" id="id_resume" class="form-control" accept=".pdf,.doc,.docx" required>
+            <div class="form-text">Accepted: PDF, DOC, DOCX. Max file size should be enforced server-side.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Submit Application</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

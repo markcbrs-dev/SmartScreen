@@ -1,0 +1,8 @@
+Django
+PyPDF2
+python-docx
+pandas
+
+# Notes:
+# - `sqlite3`, `tkinter`, `pathlib`, and stdlib modules are not listed.
+# - Pin versions if you need reproducible installs (e.g., Django==5.2.10).

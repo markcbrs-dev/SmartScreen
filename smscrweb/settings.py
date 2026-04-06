@@ -121,3 +121,14 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Authentication redirects
+LOGIN_REDIRECT_URL = '/'
+LOGIN_URL = 'login'
+
+# Media / uploads
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Maximum upload size (bytes)
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
