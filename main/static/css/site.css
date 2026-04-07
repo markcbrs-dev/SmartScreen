@@ -6,3 +6,179 @@ body { background-color: #f8fafc; color: #212529; }
 
 /* Utility */
 .w-100 { width: 100% !important; }
+.ls-wide { letter-spacing: 0.06em; }
+
+/* ── Dashboard layout ───────────────────────────────────── */
+.db-body {
+  background: #f0f2f5;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top navbar */
+.db-topnav {
+  height: 56px;
+  min-height: 56px;
+  background: #1976D2;
+  flex-shrink: 0;
+  z-index: 100;
+}
+.db-user-avatar {
+  width: 36px; height: 36px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Sidebar + main wrapper fills remaining height */
+.db-layout {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.db-sidebar {
+  width: 178px;
+  min-width: 178px;
+  background: #fff;
+  border-right: 1px solid #e4e6ea;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.db-sidebar-header { border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
+.db-sidebar-nav { display: flex; flex-direction: column; }
+.db-nav-link {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 16px;
+  color: #666;
+  text-decoration: none;
+  font-size: 0.77rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transition: background 0.15s;
+}
+.db-nav-link i { font-size: 0.95rem; }
+.db-nav-link:hover { background: #f0f4ff; color: #1976D2; }
+.db-nav-active { color: #1976D2; }
+
+/* Main content area */
+.db-main {
+  background: #f0f2f5;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Stat cards */
+.db-stat-card {
+  background: #fff;
+  border: 1px solid #e4e6ea;
+  border-radius: 4px;
+  padding: 18px 16px 16px;
+  height: 100%;
+}
+.db-stat-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #999;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+.db-stat-value {
+  font-size: 2.1rem;
+  font-weight: 400;
+  color: #1976D2;
+  line-height: 1;
+}
+
+/* Applicants table card */
+.db-table-card {
+  background: #fff;
+  border: 1px solid #e4e6ea;
+  border-radius: 4px;
+  padding: 16px 16px 8px;
+}
+
+/* Search */
+.db-search-box {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  width: 220px;
+}
+.db-search-input { border: none; outline: none; font-size: 0.84rem; width: 100%; background: transparent; }
+.db-dot { display: inline-block; width: 7px; height: 7px; background: #999; border-radius: 50%; }
+
+/* Table — override Bootstrap defaults for a clean look */
+.db-table { font-size: 0.84rem; --bs-table-striped-bg: transparent; --bs-table-hover-bg: #f8f9ff; }
+.db-table thead th {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #777;
+  border-bottom: 1px solid #eee !important;
+  padding: 8px 8px 10px;
+  background: #fff;
+}
+.db-table tbody td {
+  vertical-align: middle;
+  border-bottom: 1px solid #f5f5f5 !important;
+  padding: 10px 8px;
+  color: #333;
+  background: #fff;
+}
+.db-table tbody tr:last-child td { border-bottom: none !important; }
+
+.db-applicant-name { font-size: 0.77rem; font-weight: 700; color: #111; }
+.db-applicant-email { font-size: 0.71rem; color: #aaa; }
+
+/* Status badges */
+.db-status {
+  display: inline-block;
+  font-size: 0.69rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.db-status-new       { background: #e5e7eb; color: #555; }
+.db-status-reviewing { background: #fff8e1; color: #8a6800; }
+.db-status-interview { background: #dbeafe; color: #1e40af; }
+.db-status-offer     { background: #dcfce7; color: #166534; }
+
+/* Match progress bar */
+.db-bar-bg {
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 55px;
+}
+.db-bar-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.db-match-pct { font-size: 0.77rem; font-weight: 600; color: #333; white-space: nowrap; }
+
+/* View Resume button */
+.db-btn-resume {
+  background: #1976D2;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 13px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-block;
+}
+.db-btn-resume:hover { background: #1565C0; color: #fff; }

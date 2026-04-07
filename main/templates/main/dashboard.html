@@ -1,0 +1,165 @@
+﻿{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - SmartScreen{% endblock %}
+
+{% block body_attrs %} class="db-body"{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% endblock %}
+
+{% block navbar %}
+<nav class="db-topnav d-flex align-items-center justify-content-between px-4">
+  <div class="d-flex align-items-center gap-2">
+    <i class="bi bi-display fs-4 text-white"></i>
+    <span class="text-white fw-bold fs-5 ls-wide">SMARTSCREEN</span>
+  </div>
+  <div class="d-flex align-items-center gap-3">
+    <i class="bi bi-bell fs-5 text-white"></i>
+    <div class="db-user-avatar">
+      <i class="bi bi-person-fill text-primary fs-5"></i>
+    </div>
+  </div>
+</nav>
+{% endblock %}
+
+{% block outer_content %}
+<div class="d-flex db-layout">
+
+  <!-- Sidebar -->
+  <aside class="db-sidebar">
+    <div class="db-sidebar-header d-flex align-items-center justify-content-between px-3 py-3">
+      <span class="fw-semibold text-dark" style="font-size:0.78rem;letter-spacing:0.04em;">HR SYSTEM</span>
+      <i class="bi bi-list fs-5 text-secondary"></i>
+    </div>
+    <nav class="db-sidebar-nav mt-1">
+      <a href="{% url 'dashboard' %}" class="db-nav-link db-nav-active">
+        <i class="bi bi-grid-1x2-fill"></i> DASHBOARD
+      </a>
+      <a href="#" class="db-nav-link">
+        <i class="bi bi-gear-fill"></i> SETTINGS
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <main class="db-main flex-grow-1 overflow-auto p-4">
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} py-2" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <!-- Stat cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="db-stat-card">
+      <div class="db-stat-label">TOTAL APPLICANTS</div>
+      <div class="db-stat-value">{{ total }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="db-stat-card">
+      <div class="db-stat-label">NEW APPLICANTS</div>
+      <div class="db-stat-value">{{ new_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="db-stat-card">
+      <div class="db-stat-label">IN INTERVIEW</div>
+      <div class="db-stat-value">{{ interview_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="db-stat-card">
+      <div class="db-stat-label">OFFERS EXTENDED</div>
+      <div class="db-stat-value">{{ offers_count }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Applicants table card -->
+<div class="db-table-card">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="db-search-box">
+      <i class="bi bi-search text-secondary" style="font-size:0.85rem;"></i>
+      <input type="text" id="searchInput" placeholder="Search Applicants" class="db-search-input">
+    </div>
+    <div class="d-flex align-items-center gap-1">
+      <span class="db-dot"></span>
+      <span class="db-dot"></span>
+      <span class="db-dot"></span>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table db-table mb-0" id="applicantsTable">
+      <thead>
+        <tr>
+          <th>Applicant</th>
+          <th>Position</th>
+          <th>Status</th>
+          <th>Match</th>
+          <th>Applied Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in applicants %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-person-circle text-secondary" style="font-size:1.8rem;"></i>
+              <div>
+                <div class="db-applicant-name">{{ a.first_name|upper }} {{ a.last_name|upper }}</div>
+                <div class="db-applicant-email">{{ a.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td>{{ a.position|default:"â€”" }}</td>
+          <td>
+            <span class="db-status db-status-{{ a.status|lower }}">{{ a.status }}</span>
+          </td>
+          <td style="min-width:130px;">
+            <div class="d-flex align-items-center gap-2">
+              <div class="db-bar-bg flex-grow-1">
+                <div class="db-bar-fill" style="width:{{ a.match_score }}%"></div>
+              </div>
+              <span class="db-match-pct">{{ a.match_score }}%</span>
+            </div>
+          </td>
+          <td>{{ a.created_at|date:"n/j/Y" }}</td>
+          <td>
+            {% if a.resume %}
+              <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
+            {% else %}
+              <span class="text-muted">â€”</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.getElementById('searchInput').addEventListener('input', function () {
+    const val = this.value.toLowerCase();
+    document.querySelectorAll('#applicantsTable tbody tr').forEach(function (row) {
+      row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

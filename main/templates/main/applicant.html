@@ -1,47 +1,285 @@
-{% extends 'base.html' %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SMARTSCREEN — Resume Upload</title>
+  <style>
+    :root{
+      --blue:#1e73d8;
+      --muted:#6b7280;
+      --card-bg:#ffffff;
+      --page-bg:#f3f6fb;
+      --radius:12px;
+      --max-width:420px;
+      --gap:14px;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
 
-{% block title %}Apply - SmartScreen{% endblock %}
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--page-bg);
+      color:#111827;
+    }
 
-{% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-8 col-lg-6">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title mb-3">Applicant Information</h5>
-        <form method="post" action="{% url 'apply' %}" enctype="multipart/form-data">
-          {% csrf_token %}
+    /* Header */
+    .header{
+      background:var(--blue);
+      color:white;
+      padding:18px 20px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      box-shadow:0 2px 6px rgba(16,24,40,0.08);
+    }
+    .logo{
+      width:44px;
+      height:44px;
+      border-radius:50%;
+      background:rgba(255,255,255,0.18);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:700;
+      font-size:18px;
+      letter-spacing:0.6px;
+    }
+    .brand{
+      font-weight:700;
+      font-size:18px;
+      letter-spacing:1px;
+    }
 
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="id_first_name" class="form-label">First name</label>
-              <input type="text" name="first_name" id="id_first_name" class="form-control" required>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="id_last_name" class="form-label">Last name</label>
-              <input type="text" name="last_name" id="id_last_name" class="form-control" required>
-            </div>
-          </div>
+    /* Center container */
+    .wrap{
+      min-height:calc(100vh - 80px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:36px 16px;
+    }
 
-          <div class="mb-3">
-            <label for="id_contact" class="form-label">Contact number</label>
-            <input type="tel" name="contact_number" id="id_contact" class="form-control" placeholder="e.g. +1-555-555-5555" required>
-          </div>
+    /* Card */
+    .card{
+      width:100%;
+      max-width:var(--max-width);
+      background:var(--card-bg);
+      border-radius:var(--radius);
+      padding:22px;
+      box-shadow:0 6px 20px rgba(16,24,40,0.08);
+      border:1px solid rgba(15,23,42,0.04);
+    }
+    .card h2{
+      margin:0 0 12px 0;
+      font-size:16px;
+      color:#0f172a;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      margin-bottom:var(--gap);
+    }
+    label{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:600;
+      letter-spacing:0.6px;
+    }
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"]{
+      padding:10px 12px;
+      border-radius:8px;
+      border:1px solid rgba(15,23,42,0.06);
+      font-size:14px;
+      outline:none;
+      transition:box-shadow .12s, border-color .12s;
+    }
+    input:focus{
+      border-color:rgba(30,115,216,0.9);
+      box-shadow:0 4px 12px rgba(30,115,216,0.08);
+    }
 
-          <div class="mb-3">
-            <label for="id_email" class="form-label">Email</label>
-            <input type="email" name="email" id="id_email" class="form-control" required>
-          </div>
+    /* Custom file upload */
+    .upload-row{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .btn-upload{
+      background:var(--blue);
+      color:white;
+      border:none;
+      padding:10px 14px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:700;
+      letter-spacing:0.6px;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+    }
+    .file-name{
+      font-size:13px;
+      color:var(--muted);
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      max-width:180px;
+    }
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:6px;
+    }
 
-          <div class="mb-3">
-            <label for="id_resume" class="form-label">Upload resume</label>
-            <input type="file" name="resume" id="id_resume" class="form-control" accept=".pdf,.doc,.docx" required>
-            <div class="form-text">Accepted: PDF, DOC, DOCX. Max file size should be enforced server-side.</div>
-          </div>
+    /* Hidden native file input */
+    input[type="file"]{
+      display:none;
+    }
 
-          <button type="submit" class="btn btn-primary">Submit Application</button>
-        </form>
+    /* Submit */
+    .submit{
+      margin-top:14px;
+      width:100%;
+      padding:10px 12px;
+      border-radius:8px;
+      border:none;
+      background:#0b5ec7;
+      color:white;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    /* Responsive */
+    @media (max-width:420px){
+      .card{ padding:18px; }
+      .file-name{ max-width:120px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header" role="banner">
+    <div class="logo" aria-hidden="true">S</div>
+    <div class="brand">SMARTSCREEN</div>
+  </header>
+
+  <main class="wrap" role="main">
+    <form id="profileForm" class="card" novalidate>
+      <h2>Submit your details</h2>
+
+      <div class="field">
+        <label>NAME</label>
+        <div style="display:flex;gap:8px;">
+          <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" required />
+          <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" required />
+        </div>
       </div>
-    </div>
-  </div>
-</div>
-{% endblock %}
+
+      <div class="field">
+        <label for="contact">CONTACT NUMBER</label>
+        <input id="contact" name="contact" type="tel" inputmode="tel" placeholder="+63 9xx xxx xxxx" required />
+      </div>
+
+      <div class="field">
+        <label for="email">EMAIL</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+      </div>
+
+      <div class="field">
+        <label>RESUME</label>
+        <div class="upload-row">
+          <button type="button" id="uploadBtn" class="btn-upload">UPLOAD RESUME</button>
+          <div id="fileName" class="file-name">No file chosen</div>
+        </div>
+        <div class="hint">Accepted formats PDF DOC DOCX. Max 5 MB.</div>
+        <input id="resumeInput" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      </div>
+
+      <button type="submit" class="submit">Submit</button>
+    </form>
+  </main>
+
+  <script>
+    // Elements
+    const uploadBtn = document.getElementById('uploadBtn');
+    const resumeInput = document.getElementById('resumeInput');
+    const fileNameEl = document.getElementById('fileName');
+    const form = document.getElementById('profileForm');
+
+    // Open native file picker when custom button clicked
+    uploadBtn.addEventListener('click', () => resumeInput.click());
+
+    // Show selected file name and basic size/type validation
+    resumeInput.addEventListener('change', () => {
+      const file = resumeInput.files[0];
+      if (!file) {
+        fileNameEl.textContent = 'No file chosen';
+        return;
+      }
+
+      const maxBytes = 5 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        alert('File is too large. Maximum allowed size is 5 MB.');
+        resumeInput.value = '';
+        fileNameEl.textContent = 'No file chosen';
+        return;
+      }
+
+      fileNameEl.textContent = file.name;
+    });
+
+    // Simple client side validation and demo submit handler
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+        const firstName = document.getElementById('firstName').value.trim();
+        const lastName = document.getElementById('lastName').value.trim();
+        const contact = document.getElementById('contact').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const file = resumeInput.files[0];
+
+        if (!firstName || !lastName || !contact || !email) {
+          alert('Please fill in all required fields.');
+          return;
+        }
+
+        // Basic email pattern
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(email)) {
+          alert('Please enter a valid email address.');
+          return;
+        }
+
+        // Basic phone digits check
+        const digits = contact.replace(/\D/g, '');
+        if (digits.length < 7) {
+          alert('Please enter a valid contact number.');
+          return;
+        }
+
+        if (!file) {
+          alert('Please upload your resume.');
+          return;
+        }
+
+        // Demo: create FormData and log to console
+        const fd = new FormData();
+        fd.append('first_name', firstName);
+        fd.append('last_name', lastName);
+        fd.append('contact', contact);
+        fd.append('email', email);
+        fd.append('resume', file);
+
+      // Replace the following fetch URL with your server endpoint
+      // fetch('/api/upload', { method: 'POST', body: fd })
+      //   .then(r => r.json()).then(data => console.log(data));
+
+      console.log('Form ready to submit');
+      alert('Form validated. Ready to send to server.');
+    });
+  </script>
+</body>
+</html>

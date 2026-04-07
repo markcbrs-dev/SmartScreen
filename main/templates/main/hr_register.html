@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SMARTSCREEN — HR Register</title>
+  <style>
+    :root{ --blue:#1e73d8; --muted:#6b7280; --card-bg:#ffffff; --page-bg:#f3f6fb; --radius:12px; --max-width:420px; --gap:14px; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    html,body{ height:100%; margin:0; background:var(--page-bg); color:#111827; }
+    .header{ background:var(--blue); color:white; padding:18px 20px; display:flex; align-items:center; gap:12px; box-shadow:0 2px 6px rgba(16,24,40,0.08); }
+    .logo{ width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; }
+    .brand{ font-weight:700; font-size:18px; letter-spacing:1px; }
+    .wrap{ min-height:calc(100vh - 80px); display:flex; align-items:center; justify-content:center; padding:36px 16px; }
+    .card{ width:100%; max-width:var(--max-width); background:var(--card-bg); border-radius:var(--radius); padding:22px; box-shadow:0 6px 20px rgba(16,24,40,0.08); border:1px solid rgba(15,23,42,0.04); }
+    .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:var(--gap); }
+    label{ font-size:12px; color:var(--muted); font-weight:600; letter-spacing:0.6px; }
+    input[type="text"], input[type="email"], input[type="password"]{ padding:10px 12px; border-radius:8px; border:1px solid rgba(15,23,42,0.06); font-size:14px; outline:none; }
+    input:focus{ border-color:rgba(30,115,216,0.9); box-shadow:0 4px 12px rgba(30,115,216,0.08); }
+    .submit{ margin-top:14px; width:100%; padding:10px 12px; border-radius:8px; border:none; background:#0b5ec7; color:white; font-weight:700; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <header class="header" role="banner">
+    <div class="logo" aria-hidden="true">S</div>
+    <div class="brand">SMARTSCREEN</div>
+  </header>
+
+  <main class="wrap" role="main">
+    <form class="card" method="post" action="" novalidate>
+      {% csrf_token %}
+      <h2>HR Registration</h2>
+
+      <div class="field">
+        <label>NAME</label>
+        <div style="display:flex;gap:8px;">
+          <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" required />
+          <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="email">EMAIL</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+      </div>
+
+      <div class="field">
+        <label for="password">PASSWORD</label>
+        <input id="password" name="password" type="password" placeholder="Choose a password" required />
+      </div>
+
+      <button type="submit" class="submit">Register</button>
+    </form>
+  </main>
+</body>
+</html>

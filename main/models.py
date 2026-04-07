@@ -15,11 +15,21 @@ class Details(models.Model):
 
 
 class Applicant(models.Model):
+    STATUS_CHOICES = [
+        ('NEW', 'New'),
+        ('REVIEWING', 'Reviewing'),
+        ('INTERVIEW', 'Interview'),
+        ('OFFER', 'Offer'),
+    ]
+
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     contact_number = models.CharField(max_length=50)
     email = models.EmailField()
     resume = models.FileField(upload_to='resumes/')
+    position = models.CharField(max_length=100, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
+    match_score = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
