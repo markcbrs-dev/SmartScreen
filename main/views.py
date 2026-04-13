@@ -22,12 +22,10 @@ def login_view(request):
             else:
                 request.session.set_expiry(0)  # expire on browser close
             messages.success(request, 'Logged in successfully.')
-            return redirect('home')
+            return redirect('dashboard')
         else:
             messages.error(request, 'Please correct the errors below.')
     else:
-        if request.user.is_authenticated:
-            return redirect('home')
         form = AuthenticationForm()
 
     return render(request, 'main/hr_login.html', {'form': form})
