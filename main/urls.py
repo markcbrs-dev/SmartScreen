@@ -6,6 +6,6 @@ urlpatterns = [
     path("", RedirectView.as_view(pattern_name='login', permanent=False), name="home"),
     path("login/", views.login_view, name="login"),
     path("apply/", views.apply, name="apply"),
-    path("hr/register/", views.hr_register, name="hr_register"),
+    path("register/", views.hr_register, name="hr_register"),
     path("dashboard/", views.dashboard, name="dashboard"),
 ]
