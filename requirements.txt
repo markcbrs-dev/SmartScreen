@@ -2,6 +2,11 @@ Django
 PyPDF2
 python-docx
 pandas
+pdfplumber
+numpy
+scikit-learn
+# Optional enhancement: spacy
+# Optional model download: python -m spacy download en_core_web_sm
 
 # Notes:
 # - `sqlite3`, `tkinter`, `pathlib`, and stdlib modules are not listed.

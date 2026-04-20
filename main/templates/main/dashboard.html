@@ -64,8 +64,8 @@
       <section class="db-hero-card">
         <div>
           <div class="db-eyebrow">Recruitment Overview</div>
-          <h1 class="db-page-title">Track applicants and hiring progress in one place.</h1>
-          <p class="db-page-copy">This dashboard uses the same SmartScreen visual system as the applicant and HR pages, with a softer card layout and clearer summary blocks.</p>
+          <h1 class="db-page-title">Upload job descriptions, parse resumes, and review match scores in one workflow.</h1>
+          <p class="db-page-copy">The SmartScreen parser and matcher are now wired into the Django app. New jobs are structured on upload, applicants are scored against them, and the dashboard shows both the role library and the current fit for each applicant.</p>
         </div>
         <div class="db-hero-actions">
           <a href="{% url 'apply' %}" class="db-hero-link">Open Applicant Form</a>
@@ -89,6 +89,13 @@
         </div>
         <div class="col-12 col-sm-6 col-xl-3">
           <article class="db-stat-card">
+            <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
+            <div class="db-stat-label">Uploaded Jobs</div>
+            <div class="db-stat-value">{{ jobs|length }}</div>
+          </article>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+          <article class="db-stat-card">
             <div class="db-stat-icon"><i class="bi bi-person-plus-fill"></i></div>
             <div class="db-stat-label">New Applicants</div>
             <div class="db-stat-value">{{ new_count }}</div>
@@ -96,25 +103,88 @@
         </div>
         <div class="col-12 col-sm-6 col-xl-3">
           <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-chat-square-text-fill"></i></div>
-            <div class="db-stat-label">In Interview</div>
-            <div class="db-stat-value">{{ interview_count }}</div>
+            <div class="db-stat-icon"><i class="bi bi-search-heart-fill"></i></div>
+            <div class="db-stat-label">Under Review</div>
+            <div class="db-stat-value">{{ reviewing_count }}</div>
           </article>
         </div>
-        <div class="col-12 col-sm-6 col-xl-3">
-          <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-award-fill"></i></div>
-            <div class="db-stat-label">Offers Extended</div>
-            <div class="db-stat-value">{{ offers_count }}</div>
-          </article>
-        </div>
+      </section>
+
+      <section class="db-card-grid">
+        <article class="db-table-card db-upload-card">
+          <div class="db-table-toolbar db-tight-toolbar">
+            <div>
+              <h2 class="db-section-title">Job Description Intake</h2>
+              <p class="db-section-copy">Upload a TXT or DOCX file to extract the role title, requirements, and preferred skills.</p>
+            </div>
+          </div>
+
+          <form method="post" action="{% url 'upload_job_description' %}" enctype="multipart/form-data" class="db-upload-form">
+            {% csrf_token %}
+
+            <div class="db-form-grid">
+              <label class="db-field-label" for="id_title">Job Title</label>
+              <input id="id_title" name="title" type="text" class="db-form-input" placeholder="Senior Python Developer" required>
+
+              <label class="db-field-label" for="id_description_file">Description File</label>
+              <input id="id_description_file" name="description_file" type="file" class="db-form-input db-form-file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+            </div>
+
+            <p class="db-form-help">Applicants who were auto-matched can be re-scored when new job descriptions are added.</p>
+            <button type="submit" class="db-hero-link db-form-submit">Upload Job Description</button>
+          </form>
+        </article>
+
+        <article class="db-table-card">
+          <div class="db-table-toolbar db-tight-toolbar">
+            <div>
+              <h2 class="db-section-title">Job Library</h2>
+              <p class="db-section-copy">Parsed roles currently available for automatic matching.</p>
+            </div>
+          </div>
+
+          <div class="db-jobs-grid">
+            {% for job in jobs %}
+              <article class="db-job-card">
+                <div class="db-job-header">
+                  <div>
+                    <h3 class="db-job-title">{{ job.title }}</h3>
+                    <p class="db-job-subtitle">
+                      {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
+                      {% if job.location %} · {{ job.location }}{% endif %}
+                    </p>
+                  </div>
+                  {% if job.remote_option %}
+                    <span class="db-job-pill">Remote-friendly</span>
+                  {% endif %}
+                </div>
+
+                <div class="db-job-meta">
+                  <span><strong>Experience:</strong> {{ job.experience_level|default:'Not detected' }}</span>
+                  <span><strong>Type:</strong> {{ job.employment_type|default:'Not detected' }}</span>
+                </div>
+
+                <p class="db-job-skills-label">Required skills</p>
+                <div class="db-skill-list">
+                  {% for skill in job.required_skills|slice:':6' %}
+                    <span class="db-skill-pill">{{ skill }}</span>
+                  {% empty %}
+                    <span class="text-muted">No structured skills extracted yet.</span>
+                  {% endfor %}
+                </div>
+              </article>
+            {% empty %}
+              <div class="text-muted">No job descriptions uploaded yet.</div>
+            {% endfor %}
+          </div>
+        </article>
       </section>
 
       <section class="db-table-card">
         <div class="db-table-toolbar">
           <div>
             <h2 class="db-section-title">Applicant Directory</h2>
-            <p class="db-section-copy">Review submissions, scan status, and open uploaded resumes.</p>
+            <p class="db-section-copy">Review submissions, inspect extracted skills, and open uploaded resumes.</p>
           </div>
           <div class="db-search-box">
             <i class="bi bi-search"></i>
@@ -145,10 +215,24 @@
                     <div>
                       <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
                       <div class="db-applicant-email">{{ a.email }}</div>
+                      {% if a.parsed_skills %}
+                        <div class="db-applicant-meta">Skills: {{ a.parsed_skills|slice:":4"|join:", " }}</div>
+                      {% endif %}
                     </div>
                   </div>
                 </td>
-                <td class="db-position-cell">{{ a.position|default:"Not set" }}</td>
+                <td class="db-position-cell">
+                  <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
+                  <div class="db-position-subtitle">
+                    {% if a.job_preference_locked %}
+                      Applicant selected this role.
+                    {% elif a.applied_job %}
+                      Auto-matched from uploaded jobs.
+                    {% else %}
+                      No job match stored yet.
+                    {% endif %}
+                  </div>
+                </td>
                 <td>
                   <span class="db-status db-status-{{ a.status|lower }}">{{ a.status }}</span>
                 </td>
@@ -157,6 +241,9 @@
                     <div class="db-bar-fill" data-score="{{ a.match_score }}"></div>
                   </div>
                   <span class="db-match-pct">{{ a.match_score }}%</span>
+                  {% if a.match_notes.matching_skills %}
+                    <div class="db-match-caption">Matched: {{ a.match_notes.matching_skills|slice:":3"|join:", " }}</div>
+                  {% endif %}
                 </td>
                 <td>{{ a.created_at|date:"M j, Y" }}</td>
                 <td>

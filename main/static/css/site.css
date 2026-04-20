@@ -525,6 +525,171 @@ body { background-color: #f8fafc; color: #212529; }
   color: #fff;
 }
 
+.db-card-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.db-tight-toolbar {
+  margin-bottom: 14px;
+}
+
+.db-upload-card {
+  align-self: start;
+}
+
+.db-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.db-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.db-field-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.db-form-input {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f9fbff;
+  color: #111827;
+}
+
+.db-form-file {
+  padding: 10px;
+}
+
+.db-form-help {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.db-form-submit {
+  border: none;
+  align-self: flex-start;
+}
+
+.db-jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.db-job-card {
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, #fbfdff 0%, #f2f7ff 100%);
+  padding: 16px;
+}
+
+.db-job-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.db-job-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.db-job-subtitle {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.db-job-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.db-job-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+  color: #334155;
+  font-size: 0.84rem;
+}
+
+.db-job-skills-label {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.db-skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.db-skill-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e8f0fd;
+  color: #1e73d8;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.db-applicant-meta {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.db-position-title {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.db-position-subtitle {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+.db-match-caption {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
 @media (max-width: 991.98px) {
   .db-layout {
     grid-template-columns: 1fr;
@@ -550,6 +715,10 @@ body { background-color: #f8fafc; color: #212529; }
   .db-table-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .db-card-grid {
+    grid-template-columns: 1fr;
   }
 
   .db-hero-actions {
