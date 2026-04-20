@@ -21,6 +21,9 @@
     .remember-row{ display:flex; align-items:center; gap:8px; margin-bottom:16px; color:#374151; font-size:14px; }
     .remember-row input{ accent-color:#0b5ec7; }
     .alert{ border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:14px; }
+    .alert-success{ background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+    .alert-warning{ background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+    .alert-info{ background:#dbeafe; color:#1d4ed8; border:1px solid #bfdbfe; }
     .alert-danger{ background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
     .submit{ margin-top:8px; width:100%; padding:10px 12px; border-radius:8px; border:none; background:#0b5ec7; color:white; font-weight:700; cursor:pointer; }
     .footer-link{ margin-top:16px; text-align:center; font-size:14px; }
@@ -39,6 +42,12 @@
       {% csrf_token %}
       <h2>HR Login</h2>
       <p class="subtext">Sign in to access the SmartScreen dashboard.</p>
+
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
 
       {% if form.errors %}
         <div class="alert alert-danger">Please correct the errors below.</div>

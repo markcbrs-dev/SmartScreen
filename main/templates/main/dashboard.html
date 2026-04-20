@@ -52,10 +52,31 @@
         <i class="bi bi-grid-1x2-fill"></i>
         <span>Dashboard</span>
       </a>
-      <a href="#" class="db-nav-link">
-        <i class="bi bi-gear-fill"></i>
-        <span>Settings</span>
-      </a>
+      <div class="db-nav-group">
+        <button
+          type="button"
+          class="db-nav-link db-nav-button"
+          id="settingsToggle"
+          aria-controls="settingsMenu"
+          aria-expanded="false"
+        >
+          <span class="db-nav-button-main">
+            <i class="bi bi-gear-fill"></i>
+            <span>Settings</span>
+          </span>
+          <i class="bi bi-chevron-down db-nav-caret" aria-hidden="true"></i>
+        </button>
+        <div class="db-nav-submenu" id="settingsMenu" hidden>
+          <div class="db-nav-submenu-label">Signed in as {{ request.user.get_username }}</div>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="db-nav-subaction">
+              <i class="bi bi-box-arrow-right"></i>
+              <span>Logout</span>
+            </button>
+          </form>
+        </div>
+      </div>
     </nav>
   </aside>
 
@@ -226,6 +247,7 @@
           </table>
         </div>
       </section>
+
     </div>
   </main>
 </div>
@@ -235,6 +257,8 @@
 <script>
   const sidebar = document.getElementById('dashboardSidebar');
   const sidebarToggle = document.getElementById('sidebarToggle');
+  const settingsToggle = document.getElementById('settingsToggle');
+  const settingsMenu = document.getElementById('settingsMenu');
 
   document.querySelectorAll('.db-bar-fill').forEach(function (bar) {
     const score = Math.max(0, Math.min(100, Number(bar.dataset.score || 0)));
@@ -244,6 +268,21 @@
   sidebarToggle.addEventListener('click', function () {
     const isOpen = sidebar.classList.toggle('db-sidebar-open');
     sidebarToggle.setAttribute('aria-expanded', String(isOpen));
+    if (!isOpen) {
+      settingsMenu.hidden = true;
+      settingsToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  settingsToggle.addEventListener('click', function () {
+    if (!sidebar.classList.contains('db-sidebar-open')) {
+      sidebar.classList.add('db-sidebar-open');
+      sidebarToggle.setAttribute('aria-expanded', 'true');
+    }
+    const isExpanded = settingsToggle.getAttribute('aria-expanded') === 'true';
+    settingsToggle.setAttribute('aria-expanded', String(!isExpanded));
+    settingsMenu.hidden = isExpanded;
+    settingsToggle.classList.toggle('db-nav-open', !isExpanded);
   });
 
   document.getElementById('searchInput').addEventListener('input', function () {

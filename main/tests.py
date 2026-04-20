@@ -110,3 +110,10 @@ class JobUploadTests(TestCase):
 		self.assertEqual(JobDescription.objects.count(), 1)
 		self.assertIn('Computer Science', job.title)
 		self.assertTrue(job.required_skills)
+
+	def test_logout_clears_dashboard_session(self):
+		response = self.client.post(reverse('logout'), follow=True)
+
+		self.assertRedirects(response, reverse('login'))
+		self.assertFalse('_auth_user_id' in self.client.session)
+		self.assertContains(response, 'Logged out successfully.')

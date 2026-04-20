@@ -186,6 +186,36 @@ body { background-color: #f8fafc; color: #212529; }
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+.db-nav-button {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  justify-content: space-between;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+}
+
+.db-nav-button:focus,
+.db-nav-button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.db-nav-button-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.db-nav-caret {
+  color: #94a3b8 !important;
+  font-size: 0.82rem;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
 .db-nav-link i {
   color: #1e73d8;
   flex: 0 0 auto;
@@ -201,6 +231,21 @@ body { background-color: #f8fafc; color: #212529; }
   color: #0f172a;
 }
 
+.db-nav-open {
+  background: transparent;
+  color: #475569;
+}
+
+.db-nav-open:hover {
+  background: #f5f9ff;
+  color: #0f172a;
+}
+
+.db-nav-open .db-nav-caret {
+  color: #1e73d8 !important;
+  transform: rotate(180deg);
+}
+
 .db-sidebar:not(.db-sidebar-open) .db-nav-link {
   justify-content: center;
   padding-left: 12px;
@@ -212,6 +257,67 @@ body { background-color: #f8fafc; color: #212529; }
   opacity: 0;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.db-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.db-nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 18px;
+  padding: 4px 0 0 14px;
+  border-left: 2px solid #e2e8f0;
+}
+
+.db-nav-submenu[hidden] {
+  display: none;
+}
+
+.db-nav-submenu-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  padding: 4px 10px 0 0;
+}
+
+.db-nav-subaction {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #475569;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.db-nav-subaction i {
+  color: #c62828;
+}
+
+.db-nav-subaction:hover {
+  background: #fff1f2;
+  color: #7f1d1d;
+}
+
+.db-nav-subaction:hover i {
+  color: #b91c1c;
+}
+
+.db-sidebar:not(.db-sidebar-open) .db-nav-submenu {
+  display: none;
 }
 
 .db-content-shell {

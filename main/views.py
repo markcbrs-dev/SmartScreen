@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import login as auth_login
+from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from .models import Applicant, JobDescription
@@ -66,6 +66,16 @@ def hr_register(request):
         return redirect('login')
 
     return render(request, 'main/hr_register.html')
+
+
+@login_required
+def logout_view(request):
+    if request.method != 'POST':
+        return redirect('dashboard')
+
+    auth_logout(request)
+    messages.success(request, 'Logged out successfully.')
+    return redirect('login')
 
 
 @login_required
