@@ -6,16 +6,18 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from .models import Applicant, JobDescription
 import os
+from pathlib import Path
 from django.contrib.auth.decorators import login_required
 
 from .services import (
     build_resume_profile_from_applicant,
     evaluate_best_job_match,
-    parse_job_upload,
+    get_active_job_descriptions,
     parse_resume_upload,
+    refresh_applicant_matches,
     serialize_match_result,
+    sync_sample_job_description,
     update_applicant_from_resume_profile,
-    update_job_from_profile,
 )
 
 
@@ -68,16 +70,19 @@ def hr_register(request):
 
 @login_required
 def dashboard(request):
-    applicants = Applicant.objects.select_related('applied_job').all().order_by('-created_at')
-    jobs = JobDescription.objects.all().order_by('-created_at')
-    total = applicants.count()
-    new_count = applicants.filter(status='NEW').count()
-    reviewing_count = applicants.filter(status='REVIEWING').count()
-    interview_count = applicants.filter(status='INTERVIEW').count()
-    offers_count = applicants.filter(status='OFFER').count()
+    active_job = sync_sample_job_description()
+    applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
+    applicants = refresh_applicant_matches(applicants, active_job)
+    jobs = [active_job] if active_job is not None else []
+    total = len(applicants)
+    new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
+    reviewing_count = sum(1 for applicant in applicants if applicant.status == 'REVIEWING')
+    interview_count = sum(1 for applicant in applicants if applicant.status == 'INTERVIEW')
+    offers_count = sum(1 for applicant in applicants if applicant.status == 'OFFER')
     context = {
         'applicants': applicants,
         'jobs': jobs,
+        'active_job': active_job,
         'total': total,
         'new_count': new_count,
         'reviewing_count': reviewing_count,
@@ -88,7 +93,8 @@ def dashboard(request):
 
 
 def apply(request):
-    available_jobs = JobDescription.objects.all().order_by('-created_at')
+    active_job = sync_sample_job_description()
+    available_jobs = [active_job] if active_job is not None else []
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
@@ -117,8 +123,8 @@ def apply(request):
             return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
 
         selected_job = None
-        if selected_job_id:
-            selected_job = JobDescription.objects.filter(pk=selected_job_id).first()
+        if active_job is not None and selected_job_id == str(active_job.id):
+            selected_job = active_job
 
         resume_profile = None
         parse_error = None
@@ -176,57 +182,3 @@ def apply(request):
         return redirect('apply')
 
     return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
-
-
-@login_required
-def upload_job_description(request):
-    if request.method != 'POST':
-        return redirect('dashboard')
-
-    title = request.POST.get('title', '').strip()
-    description_file = request.FILES.get('description_file')
-    if not title or not description_file:
-        messages.error(request, 'Provide both a job title and a job description file.')
-        return redirect('dashboard')
-
-    ext = os.path.splitext(description_file.name)[1].lower()
-    if ext not in {'.txt', '.docx'}:
-        messages.error(request, 'Unsupported job description type. Use TXT or DOCX.')
-        return redirect('dashboard')
-
-    profile = None
-    try:
-        profile = parse_job_upload(description_file)
-    except ValueError as exc:
-        messages.error(request, str(exc))
-        return redirect('dashboard')
-    finally:
-        if hasattr(description_file, 'seek'):
-            description_file.seek(0)
-
-    job = JobDescription(title=title, description_file=description_file)
-    update_job_from_profile(job, profile)
-    job.save()
-
-    updated_count = 0
-    for applicant in Applicant.objects.exclude(resume_text='').all():
-        if applicant.job_preference_locked:
-            continue
-        resume_profile = build_resume_profile_from_applicant(applicant)
-        _, result = evaluate_best_job_match(resume_profile, [job])
-        if result is None:
-            continue
-        candidate_score = round(result.overall_score * 100)
-        if candidate_score > applicant.match_score:
-            applicant.applied_job = job
-            applicant.position = job.title
-            applicant.match_score = candidate_score
-            applicant.match_notes = serialize_match_result(result)
-            applicant.save(update_fields=['applied_job', 'position', 'match_score', 'match_notes'])
-            updated_count += 1
-
-    if updated_count:
-        messages.success(request, f'Job description uploaded. {updated_count} existing applicants were re-matched.')
-    else:
-        messages.success(request, 'Job description uploaded successfully.')
-    return redirect('dashboard')

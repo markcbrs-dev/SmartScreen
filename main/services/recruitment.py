@@ -1,19 +1,68 @@
+from functools import lru_cache
+from pathlib import Path
+
+from django.conf import settings
+from django.core.files.base import File
+
+from main.models import JobDescription
+
 from .entities import JobProfile, ResumeProfile
 from .job_parser import JobDescriptionParser
 from .matcher import ResumeJobMatcher
 from .resume_parser import ResumeParser
 
-resume_parser = ResumeParser()
-job_parser = JobDescriptionParser()
-matcher = ResumeJobMatcher()
+SAMPLE_JOB_STORAGE_NAME = 'jobs/job-description-sample.txt'
+
+
+@lru_cache(maxsize=1)
+def get_resume_parser() -> ResumeParser:
+    return ResumeParser()
+
+
+@lru_cache(maxsize=1)
+def get_job_parser() -> JobDescriptionParser:
+    return JobDescriptionParser()
+
+
+@lru_cache(maxsize=1)
+def get_matcher() -> ResumeJobMatcher:
+    return ResumeJobMatcher()
 
 
 def parse_resume_upload(file_obj) -> ResumeProfile:
-    return resume_parser.parse(file_obj, filename=getattr(file_obj, 'name', None))
+    return get_resume_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
 def parse_job_upload(file_obj) -> JobProfile:
-    return job_parser.parse(file_obj, filename=getattr(file_obj, 'name', None))
+    return get_job_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
+
+
+def sync_sample_job_description() -> JobDescription | None:
+    sample_path = Path(getattr(settings, 'SAMPLE_JOB_DESCRIPTION_FILE', ''))
+    if not sample_path.exists():
+        return None
+
+    with sample_path.open('rb') as sample_file:
+        profile = parse_job_upload(sample_file)
+
+    resolved_title = profile.title or sample_path.stem.replace('_', ' ').replace('-', ' ').strip()
+    job = JobDescription.objects.filter(description_file=SAMPLE_JOB_STORAGE_NAME).first()
+    if job is None:
+        job = JobDescription.objects.filter(title=resolved_title).first()
+    if job is None:
+        job = JobDescription(title=resolved_title)
+
+    job.title = resolved_title
+    with sample_path.open('rb') as sample_file:
+        job.description_file.save(SAMPLE_JOB_STORAGE_NAME, File(sample_file), save=False)
+    update_job_from_profile(job, profile)
+    job.save()
+    return job
+
+
+def get_active_job_descriptions() -> list[JobDescription]:
+    active_job = sync_sample_job_description()
+    return [active_job] if active_job is not None else []
 
 
 def update_applicant_from_resume_profile(applicant, profile: ResumeProfile) -> None:
@@ -56,6 +105,57 @@ def build_resume_profile_from_applicant(applicant) -> ResumeProfile:
     )
 
 
+def refresh_applicant_match(applicant, active_job: JobDescription | None):
+    if active_job is None:
+        return applicant, None
+
+    has_parsed_resume = bool(
+        applicant.resume_text
+        or applicant.parsed_skills
+        or applicant.parsed_education
+        or applicant.parsed_experience
+        or applicant.parsed_locations
+    )
+
+    if not has_parsed_resume and applicant.resume:
+        with applicant.resume.open('rb') as resume_file:
+            profile = parse_resume_upload(resume_file)
+        update_applicant_from_resume_profile(applicant, profile)
+        applicant.save(update_fields=[
+            'resume_text',
+            'parsed_skills',
+            'parsed_education',
+            'parsed_experience',
+            'parsed_locations',
+        ])
+
+    resume_profile = build_resume_profile_from_applicant(applicant)
+    match_result = get_matcher().match_resume_to_job(
+        resume_profile,
+        build_job_profile_from_model(active_job),
+    )
+
+    applicant.applied_job = active_job
+    applicant.position = active_job.title
+    applicant.match_score = round(match_result.overall_score * 100)
+    applicant.match_notes = serialize_match_result(match_result)
+    applicant.save(update_fields=[
+        'applied_job',
+        'position',
+        'match_score',
+        'match_notes',
+    ])
+    return applicant, match_result
+
+
+def refresh_applicant_matches(applicants, active_job: JobDescription | None):
+    refreshed = []
+    for applicant in applicants:
+        refreshed_applicant, _ = refresh_applicant_match(applicant, active_job)
+        refreshed.append(refreshed_applicant)
+    return refreshed
+
+
 def build_job_profile_from_model(job) -> JobProfile:
     return JobProfile(
         title=job.title,
@@ -78,6 +178,7 @@ def build_job_profile_from_model(job) -> JobProfile:
 
 
 def evaluate_best_job_match(resume_profile: ResumeProfile, jobs, selected_job=None):
+    matcher = get_matcher()
     if selected_job is not None:
         result = matcher.match_resume_to_job(resume_profile, build_job_profile_from_model(selected_job))
         return selected_job, result

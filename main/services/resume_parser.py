@@ -1,3 +1,4 @@
+import importlib
 import logging
 import os
 import re
@@ -23,20 +24,19 @@ except ImportError:
     Document = None
 
 try:
-    import spacy
+    spacy = importlib.import_module('spacy')
 except ImportError:
     spacy = None
 
 
+ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 class ResumeParser:
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
-        self.nlp = None
+        self._nlp = None
+        self._nlp_model = nlp_model
         self.common_skills = self._load_common_skills()
-        if spacy is not None:
-            try:
-                self.nlp = spacy.load(nlp_model)
-            except OSError:
-                logger.info('spaCy model %s is not installed; using regex-based resume parsing.', nlp_model)
 
     def parse(self, file_obj, filename: Optional[str] = None) -> ResumeProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
@@ -155,8 +155,9 @@ class ResumeParser:
         organizations = []
         locations = []
         full_name = None
-        if self.nlp is not None and text.strip():
-            doc = self.nlp(text)
+        nlp = self._get_nlp()
+        if nlp is not None and text.strip():
+            doc = nlp(text)
             persons = []
             for entity in doc.ents:
                 if entity.label_ == 'ORG':
@@ -171,6 +172,18 @@ class ResumeParser:
             full_name = self._guess_name(text)
 
         return sorted(set(organizations)), sorted(set(locations)), full_name
+
+    def _get_nlp(self):
+        if self._nlp is not None:
+            return self._nlp
+        if spacy is None or not ENABLE_SPACY:
+            return None
+        try:
+            self._nlp = spacy.load(self._nlp_model)
+        except OSError:
+            logger.info('spaCy model %s is not installed; using regex-based resume parsing.', self._nlp_model)
+            return None
+        return self._nlp
 
     def _guess_name(self, text: str) -> Optional[str]:
         for line in text.splitlines()[:8]:

@@ -61,18 +61,6 @@
 
   <main class="db-main">
     <div class="db-content-shell">
-      <section class="db-hero-card">
-        <div>
-          <div class="db-eyebrow">Recruitment Overview</div>
-          <h1 class="db-page-title">Upload job descriptions, parse resumes, and review match scores in one workflow.</h1>
-          <p class="db-page-copy">The SmartScreen parser and matcher are now wired into the Django app. New jobs are structured on upload, applicants are scored against them, and the dashboard shows both the role library and the current fit for each applicant.</p>
-        </div>
-        <div class="db-hero-actions">
-          <a href="{% url 'apply' %}" class="db-hero-link">Open Applicant Form</a>
-          <a href="{% url 'hr_register' %}" class="db-hero-link db-hero-link-muted">Add HR Account</a>
-        </div>
-      </section>
-
       {% if messages %}
         {% for message in messages %}
           <div class="alert alert-{{ message.tags }} py-2 db-alert" role="alert">{{ message }}</div>
@@ -90,7 +78,7 @@
         <div class="col-12 col-sm-6 col-xl-3">
           <article class="db-stat-card">
             <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
-            <div class="db-stat-label">Uploaded Jobs</div>
+            <div class="db-stat-label">Active Job Descriptions</div>
             <div class="db-stat-value">{{ jobs|length }}</div>
           </article>
         </div>
@@ -114,69 +102,44 @@
         <article class="db-table-card db-upload-card">
           <div class="db-table-toolbar db-tight-toolbar">
             <div>
-              <h2 class="db-section-title">Job Description Intake</h2>
-              <p class="db-section-copy">Upload a TXT or DOCX file to extract the role title, requirements, and preferred skills.</p>
+              <h2 class="db-section-title">Active Job Description</h2>
+              <p class="db-section-copy">Matching now uses the built-in sample job description file stored with the project.</p>
             </div>
           </div>
-
-          <form method="post" action="{% url 'upload_job_description' %}" enctype="multipart/form-data" class="db-upload-form">
-            {% csrf_token %}
-
-            <div class="db-form-grid">
-              <label class="db-field-label" for="id_title">Job Title</label>
-              <input id="id_title" name="title" type="text" class="db-form-input" placeholder="Senior Python Developer" required>
-
-              <label class="db-field-label" for="id_description_file">Description File</label>
-              <input id="id_description_file" name="description_file" type="file" class="db-form-input db-form-file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
-            </div>
-
-            <p class="db-form-help">Applicants who were auto-matched can be re-scored when new job descriptions are added.</p>
-            <button type="submit" class="db-hero-link db-form-submit">Upload Job Description</button>
-          </form>
-        </article>
-
-        <article class="db-table-card">
-          <div class="db-table-toolbar db-tight-toolbar">
-            <div>
-              <h2 class="db-section-title">Job Library</h2>
-              <p class="db-section-copy">Parsed roles currently available for automatic matching.</p>
-            </div>
-          </div>
-
-          <div class="db-jobs-grid">
-            {% for job in jobs %}
-              <article class="db-job-card">
-                <div class="db-job-header">
-                  <div>
-                    <h3 class="db-job-title">{{ job.title }}</h3>
-                    <p class="db-job-subtitle">
-                      {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
-                      {% if job.location %} · {{ job.location }}{% endif %}
-                    </p>
-                  </div>
-                  {% if job.remote_option %}
-                    <span class="db-job-pill">Remote-friendly</span>
-                  {% endif %}
+          {% if active_job %}
+            <article class="db-job-card">
+              <div class="db-job-header">
+                <div>
+                  <h3 class="db-job-title">{{ active_job.title }}</h3>
+                  <p class="db-job-subtitle">
+                    {% if active_job.company %}{{ active_job.company }}{% else %}Company not detected{% endif %}
+                    {% if active_job.location %} · {{ active_job.location }}{% endif %}
+                  </p>
                 </div>
+                {% if active_job.remote_option %}
+                  <span class="db-job-pill">Remote-friendly</span>
+                {% endif %}
+              </div>
 
-                <div class="db-job-meta">
-                  <span><strong>Experience:</strong> {{ job.experience_level|default:'Not detected' }}</span>
-                  <span><strong>Type:</strong> {{ job.employment_type|default:'Not detected' }}</span>
-                </div>
+              <div class="db-job-meta">
+                <span><strong>Experience:</strong> {{ active_job.experience_level|default:'Not detected' }}</span>
+                <span><strong>Type:</strong> {{ active_job.employment_type|default:'Not detected' }}</span>
+              </div>
 
-                <p class="db-job-skills-label">Required skills</p>
-                <div class="db-skill-list">
-                  {% for skill in job.required_skills|slice:':6' %}
-                    <span class="db-skill-pill">{{ skill }}</span>
-                  {% empty %}
-                    <span class="text-muted">No structured skills extracted yet.</span>
-                  {% endfor %}
-                </div>
-              </article>
-            {% empty %}
-              <div class="text-muted">No job descriptions uploaded yet.</div>
-            {% endfor %}
-          </div>
+              <p class="db-job-skills-label">Required skills</p>
+              <div class="db-skill-list">
+                {% for skill in active_job.required_skills|slice:':8' %}
+                  <span class="db-skill-pill">{{ skill }}</span>
+                {% empty %}
+                  <span class="text-muted">No structured skills extracted yet.</span>
+                {% endfor %}
+              </div>
+
+              <p class="db-form-help mt-3 mb-0">Source file: Job Description Sample.txt</p>
+            </article>
+          {% else %}
+            <div class="text-muted">The sample job description file could not be found.</div>
+          {% endif %}
         </article>
       </section>
 
@@ -227,7 +190,7 @@
                     {% if a.job_preference_locked %}
                       Applicant selected this role.
                     {% elif a.applied_job %}
-                      Auto-matched from uploaded jobs.
+                      Auto-matched from the active sample job.
                     {% else %}
                       No job match stored yet.
                     {% endif %}

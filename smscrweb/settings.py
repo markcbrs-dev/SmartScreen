@@ -129,6 +129,8 @@ LOGIN_URL = 'login'
 # Media / uploads
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+SAMPLE_JOB_DESCRIPTION_FILE = BASE_DIR / 'Job Description Sample.txt'
 
 # Maximum upload size (bytes)
 MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_JOB_DESCRIPTION_SIZE = 512 * 1024  # 512 KB

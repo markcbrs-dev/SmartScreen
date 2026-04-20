@@ -8,5 +8,4 @@ urlpatterns = [
     path("apply/", views.apply, name="apply"),
     path("register/", views.hr_register, name="hr_register"),
     path("dashboard/", views.dashboard, name="dashboard"),
-    path("jobs/upload/", views.upload_job_description, name="upload_job_description"),
 ]

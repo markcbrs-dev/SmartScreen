@@ -1,3 +1,4 @@
+import importlib
 import logging
 import os
 import re
@@ -13,24 +14,27 @@ except ImportError:
     Document = None
 
 try:
-    import spacy
+    spacy = importlib.import_module('spacy')
 except ImportError:
     spacy = None
 
 
+ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 class JobDescriptionParser:
+    MAX_TEXT_LENGTH = 50000
+    MAX_DOCX_PARAGRAPHS = 250
+    MAX_DOCX_TABLE_ROWS = 150
+
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
-        self.nlp = None
+        self._nlp = None
+        self._nlp_model = nlp_model
         self.tech_skills = self._load_tech_skills()
         self.soft_skills = self._load_soft_skills()
         self.employment_types = self._load_employment_types()
         self.experience_levels = self._load_experience_levels()
         self.industries = self._load_industries()
-        if spacy is not None:
-            try:
-                self.nlp = spacy.load(nlp_model)
-            except OSError:
-                logger.info('spaCy model %s is not installed; using regex-based job parsing.', nlp_model)
 
     def parse(self, file_obj, filename: Optional[str] = None) -> JobProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
@@ -73,34 +77,65 @@ class JobDescriptionParser:
             logger.exception('python-docx failed to extract job description text.')
             raise ValueError(f'Could not read the uploaded DOCX: {exc}') from exc
 
-        lines = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
-        for table in document.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    if cell.text.strip():
-                        lines.append(cell.text.strip())
-        return '\n'.join(lines)
+        lines = []
+        for paragraph in document.paragraphs[:self.MAX_DOCX_PARAGRAPHS]:
+            if paragraph.text.strip():
+                lines.append(paragraph.text.strip())
+            if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                break
+
+        if self._joined_length(lines) < self.MAX_TEXT_LENGTH:
+            row_count = 0
+            for table in document.tables:
+                for row in table.rows:
+                    row_count += 1
+                    if row_count > self.MAX_DOCX_TABLE_ROWS:
+                        break
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            lines.append(cell.text.strip())
+                        if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                            break
+                    if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                        break
+                if row_count > self.MAX_DOCX_TABLE_ROWS or self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                    break
+
+        return self._truncate_text('\n'.join(lines))
 
     def extract_text_from_txt(self, file_obj) -> str:
         if hasattr(file_obj, 'seek'):
             file_obj.seek(0)
-        content = file_obj.read()
+        content = file_obj.read(self.MAX_TEXT_LENGTH + 1)
         if isinstance(content, bytes):
             for encoding in ('utf-8', 'latin-1', 'cp1252'):
                 try:
-                    return content.decode(encoding)
+                    return self._truncate_text(content.decode(encoding))
                 except UnicodeDecodeError:
                     continue
             raise ValueError('Could not decode the uploaded text file.')
-        return str(content)
+        return self._truncate_text(str(content))
 
     def extract_job_title(self, text: str) -> Optional[str]:
+        role_keywords = {
+            'professor',
+            'engineer',
+            'developer',
+            'analyst',
+            'manager',
+            'specialist',
+            'consultant',
+            'scientist',
+            'designer',
+            'administrator',
+            'coordinator',
+        }
+
         patterns = [
             r'Job Title:\s*(.+)',
             r'Position:\s*(.+)',
             r'Title:\s*(.+)',
             r'Role:\s*(.+)',
-            r'\b(?:Senior|Junior|Lead|Principal)?\s*(?:[A-Z][a-z]+\s*)+(?:Engineer|Developer|Analyst|Manager|Specialist|Consultant)\b',
         ]
         for line in text.splitlines()[:25]:
             candidate = line.strip()
@@ -109,7 +144,26 @@ class JobDescriptionParser:
             for pattern in patterns:
                 match = re.search(pattern, candidate, re.IGNORECASE)
                 if match:
-                    return (match.group(1) if match.lastindex else match.group(0)).strip()
+                    return self._normalize_title_candidate(
+                        (match.group(1) if match.lastindex else match.group(0)).strip(),
+                        role_keywords,
+                    )
+
+        summary_match = re.search(
+            r'\b(?:seeking|hiring|looking for)\b[^.\n]{0,80}?\b([A-Z][A-Za-z&/\- ]{2,80}\b(?:Professor|Engineer|Developer|Analyst|Manager|Specialist|Consultant|Scientist|Designer|Administrator|Coordinator))\b',
+            text,
+            re.IGNORECASE,
+        )
+        if summary_match:
+            return self._normalize_title_candidate(summary_match.group(1), role_keywords)
+
+        for line in text.splitlines()[:40]:
+            candidate = ' '.join(line.split()).strip(':- ')
+            if not candidate or len(candidate) > 120:
+                continue
+            words = [word.strip('.,()').lower() for word in candidate.split()]
+            if any(word in role_keywords for word in words):
+                return self._normalize_title_candidate(candidate, role_keywords)
         return None
 
     def extract_company(self, text: str) -> Optional[str]:
@@ -118,8 +172,9 @@ class JobDescriptionParser:
             for match in matches:
                 if len(match.strip()) > 2:
                     return match.strip()
-        if self.nlp is not None:
-            doc = self.nlp(text[:1000])
+        nlp = self._get_nlp()
+        if nlp is not None:
+            doc = nlp(text[:1000])
             for entity in doc.ents:
                 if entity.label_ == 'ORG' and len(entity.text.strip()) > 2:
                     return entity.text.strip()
@@ -131,12 +186,25 @@ class JobDescriptionParser:
             for match in matches:
                 if len(match.strip()) > 2:
                     return match.strip()
-        if self.nlp is not None:
-            doc = self.nlp(text[:1500])
+        nlp = self._get_nlp()
+        if nlp is not None:
+            doc = nlp(text[:1500])
             locations = [entity.text.strip() for entity in doc.ents if entity.label_ == 'GPE']
             if locations:
                 return ', '.join(dict.fromkeys(locations))
         return None
+
+    def _get_nlp(self):
+        if self._nlp is not None:
+            return self._nlp
+        if spacy is None or not ENABLE_SPACY:
+            return None
+        try:
+            self._nlp = spacy.load(self._nlp_model)
+        except OSError:
+            logger.info('spaCy model %s is not installed; using regex-based job parsing.', self._nlp_model)
+            return None
+        return self._nlp
 
     def extract_employment_type(self, text: str) -> Optional[str]:
         text_lower = text.lower()
@@ -278,3 +346,28 @@ class JobDescriptionParser:
             'technology', 'software', 'it', 'finance', 'banking', 'healthcare', 'education', 'retail',
             'manufacturing', 'consulting', 'marketing', 'media', 'real estate', 'insurance', 'saas',
         }
+
+    def _truncate_text(self, text: str) -> str:
+        return text[:self.MAX_TEXT_LENGTH]
+
+    def _joined_length(self, lines: list[str]) -> int:
+        return sum(len(line) for line in lines)
+
+    def _normalize_title_candidate(self, candidate: str, role_keywords: set[str]) -> str:
+        words = [word for word in candidate.split() if word]
+        if not words:
+            return candidate.strip()
+
+        role_index = None
+        for index, word in enumerate(words):
+            normalized = word.strip('.,()').lower()
+            if normalized in role_keywords:
+                role_index = index
+
+        if role_index is None:
+            return ' '.join(words).strip()
+
+        start = max(0, role_index - 3)
+        while start < role_index and not words[start][:1].isupper():
+            start += 1
+        return ' '.join(words[start:role_index + 1]).strip(':- ')
