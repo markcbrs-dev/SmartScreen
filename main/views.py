@@ -67,6 +67,7 @@ def hr_register(request):
         user = User.objects.create_user(username=email, email=email, password=password,
                                         first_name=first_name, last_name=last_name)
         user.is_staff = True
+        user.is_active = False
         user.save()
 
         messages.success(request, 'Registration successful. You can now log in.')
