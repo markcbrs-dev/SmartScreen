@@ -26,6 +26,16 @@ def build_docx_file(name: str, paragraphs: list[str]) -> SimpleUploadedFile:
 
 
 class ApplicantFlowTests(TestCase):
+	def test_apply_page_shows_uploaded_job_description_without_auto_match_option(self):
+		job = sync_sample_job_description()
+
+		response = self.client.get(reverse('apply'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Job Description')
+		self.assertContains(response, job.title)
+		self.assertNotContains(response, 'Auto-match me to the best job')
+
 	def test_apply_matches_selected_job_and_stores_resume_analysis(self):
 		job = sync_sample_job_description()
 

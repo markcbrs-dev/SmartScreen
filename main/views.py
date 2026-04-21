@@ -21,6 +21,13 @@ from .services import (
 )
 
 
+def _read_sample_job_description_text() -> str:
+    sample_path = Path(getattr(settings, 'SAMPLE_JOB_DESCRIPTION_FILE', ''))
+    if not sample_path.exists():
+        return ''
+    return sample_path.read_text(encoding='utf-8', errors='replace').strip()
+
+
 def login_view(request):
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
@@ -105,6 +112,11 @@ def dashboard(request):
 def apply(request):
     active_job = sync_sample_job_description()
     available_jobs = [active_job] if active_job is not None else []
+    context = {
+        'available_jobs': available_jobs,
+        'active_job': active_job,
+        'active_job_source_text': _read_sample_job_description_text(),
+    }
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
@@ -115,26 +127,34 @@ def apply(request):
 
         if not first_name or not last_name or not contact or not email:
             messages.error(request, 'Please fill in all required fields.')
-            return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
+            return render(request, 'main/applicant.html', context)
 
         if not resume_file:
             messages.error(request, 'Please upload a resume file.')
-            return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
+            return render(request, 'main/applicant.html', context)
 
         allowed_ext = {'.pdf', '.docx'}
         ext = os.path.splitext(resume_file.name)[1].lower()
         if ext not in allowed_ext:
             messages.error(request, 'Unsupported file type. Use PDF or DOCX.')
-            return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
+            return render(request, 'main/applicant.html', context)
 
         max_size = getattr(settings, 'MAX_UPLOAD_SIZE', 5 * 1024 * 1024)
         if resume_file.size > max_size:
             messages.error(request, f'Resume file too large (max {max_size // 1024 // 1024} MB).')
-            return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
+            return render(request, 'main/applicant.html', context)
 
         selected_job = None
         if active_job is not None and selected_job_id == str(active_job.id):
             selected_job = active_job
+
+        if active_job is None:
+            messages.error(request, 'No uploaded job description is available right now.')
+            return render(request, 'main/applicant.html', context)
+
+        if selected_job is None:
+            messages.error(request, 'Please select the uploaded job description before submitting.')
+            return render(request, 'main/applicant.html', context)
 
         resume_profile = None
         parse_error = None
@@ -191,4 +211,4 @@ def apply(request):
             messages.success(request, 'Application submitted successfully.')
         return redirect('apply')
 
-    return render(request, 'main/applicant.html', {'available_jobs': available_jobs})
+    return render(request, 'main/applicant.html', context)

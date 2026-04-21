@@ -8,32 +8,36 @@
     :root{
       --blue:#1e73d8;
       --blue-dark:#0b5ec7;
+      --blue-soft:#dce9fb;
       --ink:#111827;
+      --ink-soft:#334155;
       --muted:#6b7280;
       --card-bg:#ffffff;
       --page-bg:#eef4fb;
-      --radius:14px;
-      --max-width:540px;
-      --gap:14px;
+      --line:rgba(15,23,42,0.08);
+      --radius:18px;
+      --gap:16px;
       font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }
 
     html,body{
       height:100%;
       margin:0;
-      background:linear-gradient(180deg, #eaf2ff 0%, var(--page-bg) 40%, #f8fbff 100%);
+      background:
+        radial-gradient(circle at top left, rgba(30,115,216,0.16), transparent 30%),
+        linear-gradient(180deg, #eaf2ff 0%, var(--page-bg) 40%, #f8fbff 100%);
       color:var(--ink);
+      overflow:hidden;
     }
 
     .header{
       background:var(--blue);
       color:white;
-      padding:18px 20px;
+      padding:14px 18px;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:12px;
-      box-shadow:0 2px 6px rgba(16,24,40,0.08);
     }
 
     .header-left{
@@ -43,21 +47,21 @@
     }
 
     .logo{
-      width:44px;
-      height:44px;
+      width:40px;
+      height:40px;
       border-radius:50%;
       background:rgba(255,255,255,0.18);
       display:flex;
       align-items:center;
       justify-content:center;
       font-weight:700;
-      font-size:18px;
+      font-size:16px;
       letter-spacing:0.6px;
     }
 
     .brand{
       font-weight:700;
-      font-size:18px;
+      font-size:17px;
       letter-spacing:1px;
     }
 
@@ -65,62 +69,98 @@
       color:#fff;
       text-decoration:none;
       font-weight:600;
-      padding:10px 14px;
+      padding:8px 12px;
       border-radius:999px;
       background:rgba(255,255,255,0.14);
+      font-size:13px;
     }
 
     .wrap{
-      min-height:calc(100vh - 80px);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:36px 16px;
+      height:calc(100vh - 68px);
+      padding:14px 16px;
+      overflow:hidden;
+    }
+
+    .layout{
+      width:min(100%, 1160px);
+      height:100%;
+      margin:0 auto;
+      display:grid;
+      grid-template-columns:minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap:18px;
+      align-items:stretch;
     }
 
     .card{
-      width:100%;
-      max-width:var(--max-width);
       background:var(--card-bg);
       border-radius:var(--radius);
-      padding:24px;
-      box-shadow:0 18px 40px rgba(16,24,40,0.10);
+      padding:18px;
       border:1px solid rgba(15,23,42,0.04);
+      min-height:0;
+    }
+
+    .application-card{
+      min-width:0;
+      height:100%;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+    }
+
+    .job-card{
+      height:100%;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .job-card::before{
+      content:"";
+      position:absolute;
+      inset:0 0 auto 0;
+      height:110px;
+      background:linear-gradient(135deg, rgba(30,115,216,0.16), rgba(11,94,199,0.04));
+      pointer-events:none;
+    }
+
+    .job-card > *{
+      position:relative;
     }
 
     .eyebrow{
-      margin:0 0 8px;
+      margin:0 0 6px;
       color:var(--blue);
-      font-size:12px;
+      font-size:11px;
       font-weight:700;
       letter-spacing:0.12em;
       text-transform:uppercase;
     }
 
     .card h2{
-      margin:0 0 10px;
-      font-size:24px;
+      margin:0 0 8px;
+      font-size:21px;
       color:#0f172a;
     }
 
     .intro{
-      margin:0 0 20px;
+      margin:0 0 12px;
       color:var(--muted);
-      font-size:14px;
-      line-height:1.6;
+      font-size:12px;
+      line-height:1.45;
     }
 
     .messages{
       display:flex;
       flex-direction:column;
-      gap:10px;
-      margin-bottom:16px;
+      gap:8px;
+      margin-bottom:10px;
     }
 
     .message{
       border-radius:10px;
-      padding:10px 12px;
-      font-size:14px;
+      padding:8px 10px;
+      font-size:13px;
     }
 
     .message-success{ background:#dcfce7; color:#166534; }
@@ -131,8 +171,8 @@
     .field{
       display:flex;
       flex-direction:column;
-      gap:6px;
-      margin-bottom:var(--gap);
+      gap:5px;
+      margin-bottom:10px;
     }
 
     .name-row{
@@ -142,7 +182,7 @@
     }
 
     label{
-      font-size:12px;
+      font-size:11px;
       color:var(--muted);
       font-weight:700;
       letter-spacing:0.08em;
@@ -153,10 +193,10 @@
     input[type="email"],
     input[type="tel"],
     select{
-      padding:11px 12px;
+      padding:9px 11px;
       border-radius:10px;
-      border:1px solid rgba(15,23,42,0.08);
-      font-size:14px;
+      border:1px solid var(--line);
+      font-size:12px;
       outline:none;
       background:#fff;
       transition:box-shadow .12s, border-color .12s;
@@ -178,7 +218,7 @@
       background:var(--blue);
       color:white;
       border:none;
-      padding:10px 14px;
+      padding:9px 12px;
       border-radius:10px;
       cursor:pointer;
       font-weight:700;
@@ -186,10 +226,11 @@
       display:inline-flex;
       align-items:center;
       gap:8px;
+      font-size:12px;
     }
 
     .file-name{
-      font-size:13px;
+      font-size:12px;
       color:var(--muted);
       overflow:hidden;
       text-overflow:ellipsis;
@@ -198,10 +239,10 @@
     }
 
     .hint{
-      font-size:12px;
+      font-size:10px;
       color:var(--muted);
-      margin-top:6px;
-      line-height:1.5;
+      margin-top:3px;
+      line-height:1.35;
     }
 
     input[type="file"]{
@@ -209,22 +250,22 @@
     }
 
     .submit{
-      margin-top:16px;
+      margin-top:10px;
       width:100%;
-      padding:12px 14px;
+      padding:10px 12px;
       border-radius:10px;
       border:none;
       background:var(--blue-dark);
       color:white;
       font-weight:700;
       cursor:pointer;
-      font-size:15px;
+      font-size:13px;
     }
 
     .secondary-link{
-      margin-top:16px;
+      margin-top:10px;
       text-align:center;
-      font-size:14px;
+      font-size:12px;
       color:var(--muted);
     }
 
@@ -234,11 +275,181 @@
       font-weight:600;
     }
 
+    .section-title{
+      margin:0;
+      font-size:1rem;
+      color:#0f172a;
+    }
+
+    .job-head{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      margin-bottom:12px;
+      padding-bottom:12px;
+      border-bottom:1px solid var(--line);
+    }
+
+    .job-title{
+      margin:0;
+      font-size:1.2rem;
+      line-height:1.2;
+      color:#0f172a;
+    }
+
+    .job-subtitle{
+      margin:0;
+      color:var(--ink-soft);
+      font-size:0.84rem;
+      line-height:1.4;
+    }
+
+    .job-pills,
+    .skill-pills{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .job-pill,
+    .skill-pill{
+      display:inline-flex;
+      align-items:center;
+      padding:6px 10px;
+      border-radius:999px;
+      background:#edf4ff;
+      color:#165eb3;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:0.02em;
+    }
+
+    .job-meta{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+      margin-bottom:12px;
+    }
+
+    .job-meta-item{
+      padding:8px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fbfdff;
+    }
+
+    .job-meta-label{
+      display:block;
+      margin-bottom:3px;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:700;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+    }
+
+    .job-meta-value{
+      color:#0f172a;
+      font-size:12px;
+      line-height:1.4;
+      word-break:break-word;
+    }
+
+    .job-section{
+      margin-top:12px;
+    }
+
+    .job-section-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+
+    .job-section-copy{
+      margin:0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.6;
+    }
+
+    .job-list{
+      margin:0;
+      padding-left:18px;
+      color:var(--ink-soft);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .job-list li + li{
+      margin-top:6px;
+    }
+
+    .job-scroll-area{
+      flex:1 1 auto;
+      min-height:0;
+      overflow-y:auto;
+      overflow-x:hidden;
+      padding-right:4px;
+      scrollbar-width:thin;
+      scrollbar-color:rgba(30,115,216,0.55) rgba(220,233,251,0.7);
+    }
+
+    .job-scroll-area::-webkit-scrollbar{
+      width:10px;
+    }
+
+    .job-scroll-area::-webkit-scrollbar-track{
+      background:rgba(220,233,251,0.7);
+      border-radius:999px;
+    }
+
+    .job-scroll-area::-webkit-scrollbar-thumb{
+      background:rgba(30,115,216,0.55);
+      border-radius:999px;
+      border:2px solid rgba(220,233,251,0.7);
+    }
+
+    .job-raw-text{
+      margin:0;
+      padding:12px;
+      border-radius:14px;
+      background:#f8fbff;
+      border:1px solid var(--line);
+      color:var(--ink-soft);
+      font-size:12px;
+      line-height:1.55;
+      white-space:pre-wrap;
+    }
+
+    .job-empty{
+      margin:0;
+      padding:12px;
+      border-radius:14px;
+      background:#f8fbff;
+      border:1px dashed rgba(15,23,42,0.14);
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+
+    @media (max-width:980px){
+      .layout{ grid-template-columns:1fr; }
+      html,body{ overflow:auto; }
+      .wrap{ height:auto; overflow:visible; }
+      .layout{ height:auto; }
+      .application-card,
+      .job-card{ height:auto; }
+      .job-scroll-area{ overflow:visible; padding-right:0; }
+    }
+
     @media (max-width:520px){
-      .card{ padding:20px; }
+      .card{ padding:16px; }
       .name-row{ grid-template-columns:1fr; }
       .file-name{ max-width:140px; }
       .header{ align-items:flex-start; flex-direction:column; }
+      .job-meta{ grid-template-columns:1fr; }
     }
   </style>
 </head>
@@ -252,64 +463,175 @@
   </header>
 
   <main class="wrap" role="main">
-    <form id="profileForm" class="card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data" novalidate>
-      {% csrf_token %}
+    <div class="layout">
+      <form id="profileForm" class="card application-card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
 
-      <p class="eyebrow">Applicant Submission</p>
-      <h2>Upload your resume</h2>
-      <p class="intro">SmartScreen will store your application, parse your resume, and match it against the active sample job description configured for this project. If you leave the position blank, the system will select the best fit automatically.</p>
+        <p class="eyebrow">Applicant Submission</p>
+        <h2>Upload your resume</h2>
+        <p class="intro">Submit your application against the currently uploaded job description. The target position is fixed to that uploaded job, and your resume will be scored only against it.</p>
 
-      {% if messages %}
-        <div class="messages">
-          {% for message in messages %}
-            <div class="message message-{{ message.tags|default:'info' }}">{{ message }}</div>
-          {% endfor %}
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              <div class="message message-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="field">
+          <label>Name</label>
+          <div class="name-row">
+            <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" value="{{ request.POST.first_name|default:'' }}" required />
+            <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" value="{{ request.POST.last_name|default:'' }}" required />
+          </div>
         </div>
-      {% endif %}
 
-      <div class="field">
-        <label>Name</label>
-        <div class="name-row">
-          <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" value="{{ request.POST.first_name|default:'' }}" required />
-          <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" value="{{ request.POST.last_name|default:'' }}" required />
+        <div class="field">
+          <label for="contact">Contact Number</label>
+          <input id="contact" name="contact" type="tel" inputmode="tel" placeholder="+63 9xx xxx xxxx" value="{{ request.POST.contact|default:'' }}" required />
         </div>
-      </div>
 
-      <div class="field">
-        <label for="contact">Contact Number</label>
-        <input id="contact" name="contact" type="tel" inputmode="tel" placeholder="+63 9xx xxx xxxx" value="{{ request.POST.contact|default:'' }}" required />
-      </div>
-
-      <div class="field">
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" value="{{ request.POST.email|default:'' }}" required />
-      </div>
-
-      <div class="field">
-        <label for="jobId">Target Position</label>
-        <select id="jobId" name="job_id">
-          <option value="">Auto-match me to the best job</option>
-          {% for job in available_jobs %}
-            <option value="{{ job.id }}" {% if request.POST.job_id == job.id|stringformat:'s' %}selected{% endif %}>{{ job.title }}{% if job.company %} - {{ job.company }}{% endif %}</option>
-          {% endfor %}
-        </select>
-        <div class="hint">Choose a specific role to lock your application to it, or leave this blank for automatic matching.</div>
-      </div>
-
-      <div class="field">
-        <label>Resume</label>
-        <div class="upload-row">
-          <button type="button" id="uploadBtn" class="btn-upload">Upload Resume</button>
-          <div id="fileName" class="file-name">No file chosen</div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" value="{{ request.POST.email|default:'' }}" required />
         </div>
-        <div class="hint">Accepted formats: PDF and DOCX. Maximum file size: 5 MB.</div>
-        <input id="resumeInput" name="resume" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
-      </div>
 
-      <button type="submit" class="submit">Submit Application</button>
+        <div class="field">
+          <label for="jobId">Target Position</label>
+          <select id="jobId" name="job_id" required>
+            {% if active_job %}
+              {% for job in available_jobs %}
+                <option value="{{ job.id }}" {% if request.POST.job_id == job.id|stringformat:'s' or not request.POST.job_id %}selected{% endif %}>{{ job.title }}{% if job.company %} - {{ job.company }}{% endif %}</option>
+              {% endfor %}
+            {% else %}
+              <option value="">No uploaded job description available</option>
+            {% endif %}
+          </select>
+          <div class="hint">Only the uploaded job description can be selected for this application.</div>
+        </div>
 
-      <p class="secondary-link">HR access: <a href="{% url 'login' %}">open the dashboard login</a></p>
-    </form>
+        <div class="field">
+          <label>Resume</label>
+          <div class="upload-row">
+            <button type="button" id="uploadBtn" class="btn-upload">Upload Resume</button>
+            <div id="fileName" class="file-name">No file chosen</div>
+          </div>
+          <div class="hint">Accepted formats: PDF and DOCX. Maximum file size: 5 MB.</div>
+          <input id="resumeInput" name="resume" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
+        </div>
+
+        <button type="submit" class="submit" {% if not active_job %}disabled{% endif %}>Submit Application</button>
+
+        <p class="secondary-link">HR access: <a href="{% url 'login' %}">open the dashboard login</a></p>
+      </form>
+
+      <aside class="card job-card" aria-labelledby="job-description-title">
+        <p class="eyebrow">Job Description</p>
+        <div class="job-head">
+          <div>
+            <h2 id="job-description-title" class="job-title">{% if active_job %}{{ active_job.title }}{% else %}No job description{% endif %}</h2>
+            <p class="job-subtitle">
+              {% if active_job %}
+                {% if active_job.company %}{{ active_job.company }}{% else %}Company not detected{% endif %}
+                {% if active_job.location %} · {{ active_job.location }}{% endif %}
+              {% else %}
+                Upload or sync a job description so applicants can target a specific role.
+              {% endif %}
+            </p>
+          </div>
+          {% if active_job %}
+            <div class="job-pills">
+              {% if active_job.remote_option %}<span class="job-pill">Remote-friendly</span>{% endif %}
+              {% if active_job.employment_type %}<span class="job-pill">{{ active_job.employment_type }}</span>{% endif %}
+              {% if active_job.experience_level %}<span class="job-pill">{{ active_job.experience_level }}</span>{% endif %}
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="job-scroll-area">
+          {% if active_job %}
+            <div class="job-meta">
+              <div class="job-meta-item">
+                <span class="job-meta-label">Company</span>
+                <div class="job-meta-value">{{ active_job.company|default:'Not detected' }}</div>
+              </div>
+              <div class="job-meta-item">
+                <span class="job-meta-label">Location</span>
+                <div class="job-meta-value">{{ active_job.location|default:'Not detected' }}</div>
+              </div>
+              <div class="job-meta-item">
+                <span class="job-meta-label">Employment Type</span>
+                <div class="job-meta-value">{{ active_job.employment_type|default:'Not detected' }}</div>
+              </div>
+              <div class="job-meta-item">
+                <span class="job-meta-label">Experience Level</span>
+                <div class="job-meta-value">{{ active_job.experience_level|default:'Not detected' }}</div>
+              </div>
+            </div>
+
+            <section class="job-section">
+              <div class="job-section-header">
+                <h3 class="section-title">Required Skills</h3>
+              </div>
+              {% if active_job.required_skills %}
+                <div class="skill-pills">
+                  {% for skill in active_job.required_skills %}
+                    <span class="skill-pill">{{ skill }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="job-empty">No structured required skills were extracted from the uploaded job description.</p>
+              {% endif %}
+            </section>
+
+            {% if active_job.responsibilities %}
+              <section class="job-section">
+                <div class="job-section-header">
+                  <h3 class="section-title">Responsibilities</h3>
+                </div>
+                <ul class="job-list">
+                  {% for item in active_job.responsibilities|slice:':6' %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </section>
+            {% endif %}
+
+            {% if active_job.qualifications or active_job.education_requirements %}
+              <section class="job-section">
+                <div class="job-section-header">
+                  <h3 class="section-title">Qualifications</h3>
+                </div>
+                <ul class="job-list">
+                  {% for item in active_job.qualifications|slice:':4' %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                  {% for item in active_job.education_requirements|slice:':3' %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </section>
+            {% endif %}
+
+            <section class="job-section">
+              <div class="job-section-header">
+                <h3 class="section-title">Current Job Description</h3>
+              </div>
+              {% if active_job_source_text %}
+                <p class="job-raw-text">{{ active_job_source_text }}</p>
+              {% elif active_job.raw_text %}
+                <p class="job-raw-text">{{ active_job.raw_text }}</p>
+              {% else %}
+                <p class="job-empty">The uploaded file exists, but no raw description text is available to preview.</p>
+              {% endif %}
+            </section>
+          {% else %}
+            <p class="job-empty">No uploaded job description is currently available. Applicants cannot submit until one is available in the system.</p>
+          {% endif %}
+        </div>
+      </aside>
+    </div>
   </main>
 
   <script>
