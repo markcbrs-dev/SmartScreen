@@ -326,7 +326,8 @@ class JobDescriptionParser:
             'sql', 'mongodb', 'postgresql', 'mysql', 'redis', 'aws', 'azure', 'gcp',
             'docker', 'kubernetes', 'jenkins', 'terraform', 'git', 'linux', 'machine learning',
             'deep learning', 'ai', 'data science', 'data analysis', 'tableau', 'power bi',
-            'agile', 'scrum', 'devops', 'rest api', 'graphql', 'microservices',
+            'agile', 'scrum', 'devops', 'rest api', 'graphql', 'microservices', 'kotlin',
+            'swift', 'flutter'
         }
 
     def _load_soft_skills(self) -> set[str]:
@@ -336,15 +337,21 @@ class JobDescriptionParser:
         }
 
     def _load_employment_types(self) -> set[str]:
-        return {'full-time', 'part-time', 'contract', 'temporary', 'internship', 'hybrid', 'remote', 'onsite'}
+        return {'full-time', 'part-time', 'contract', 'temporary', 'internship', 'hybrid', 'remote', 'onsite'
+                'freelance', 'permanent', 'seasonal', 'volunteer', 'commission'
+        }
 
     def _load_experience_levels(self) -> set[str]:
-        return {'entry level', 'junior', 'mid level', 'senior', 'lead', 'principal', 'manager', 'director'}
+        return {'entry level', 'junior', 'mid level', 'senior', 'lead', 'principal', 'manager', 'director'
+                'intern', 'trainee', 'associate', 'staff', 'vp', 'c-level'
+        }
 
     def _load_industries(self) -> set[str]:
         return {
             'technology', 'software', 'it', 'finance', 'banking', 'healthcare', 'education', 'retail',
-            'manufacturing', 'consulting', 'marketing', 'media', 'real estate', 'insurance', 'saas',
+            'manufacturing', 'consulting', 'marketing', 'media', 'real estate', 'insurance', 'saas', 'admin',
+            'administrator', 'coordinator', 'professor', 'engineer', 'developer', 'analyst', 'specialist',
+            'programmer', 'support', 'human resources', 'hr', 'operations', 'logistics'
         }
 
     def _truncate_text(self, text: str) -> str:
