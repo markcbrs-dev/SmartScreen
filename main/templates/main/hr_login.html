@@ -27,8 +27,7 @@
     .alert-danger{ background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
     .submit{ margin-top:8px; width:100%; padding:10px 12px; border-radius:8px; border:none; background:#0b5ec7; color:white; font-weight:700; cursor:pointer; }
     .footer-link{ margin-top:16px; text-align:center; font-size:14px; }
-    .footer-link a{ color:#0b5ec7; text-decoration:none; }
-    .footer-link a:hover{ text-decoration:underline; }
+    .footer-link .submit{ margin-top:0; }
   </style>
 </head>
 <body>
@@ -70,7 +69,9 @@
 
       <button type="submit" class="submit">Sign in</button>
 
-      <p class="footer-link"><a href="{% url 'home' %}">Back to home</a></p>
+      <div class="footer-link">
+        <button type="button" class="submit" onclick="window.location.href='{% url 'hr_register' %}'">Register</button>
+      </div>
     </form>
   </main>
 </body>
