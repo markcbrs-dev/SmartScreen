@@ -302,10 +302,7 @@
     }
 
     .job-subtitle{
-      margin:0;
-      color:var(--ink-soft);
-      font-size:0.84rem;
-      line-height:1.4;
+      display:none;
     }
 
     .job-pills,
@@ -469,7 +466,7 @@
 
   <main class="wrap" role="main">
     <div id="applicantLayout" class="layout{% if not request.POST.job_id %} layout-collapsed{% endif %}">
-      <form id="profileForm" class="card application-card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data" novalidate>
+      <form id="profileForm" class="card application-card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data">
         {% csrf_token %}
 
         <p class="eyebrow">Applicant Submission</p>
@@ -535,14 +532,6 @@
         <div class="job-head">
           <div>
             <h2 id="job-description-title" class="job-title">{% if active_job %}{{ active_job.title }}{% else %}No job description{% endif %}</h2>
-            <p class="job-subtitle">
-              {% if active_job %}
-                {% if active_job.company %}{{ active_job.company }}{% else %}Company not detected{% endif %}
-                {% if active_job.location %} · {{ active_job.location }}{% endif %}
-              {% else %}
-                  Upload a job description so applicants can target a specific role.
-              {% endif %}
-            </p>
           </div>
           {% if active_job %}
             <div class="job-pills">
@@ -644,7 +633,6 @@
     const jobIdSelect = document.getElementById('jobId');
     const jobDescriptionCard = document.getElementById('jobDescriptionCard');
     const jobDescriptionTitle = document.getElementById('job-description-title');
-    const jobSubtitle = document.querySelector('.job-subtitle');
     const jobPills = document.querySelector('.job-pills');
     const jobMeta = document.querySelector('.job-meta');
     const requiredSkillsSection = document.querySelector('.job-section');
@@ -721,15 +709,6 @@
 
       if (jobDescriptionTitle) {
         jobDescriptionTitle.textContent = selectedJob.title || 'No job description';
-      }
-
-      if (jobSubtitle) {
-        const subtitleParts = [];
-        subtitleParts.push(selectedJob.company || 'Company not detected');
-        if (selectedJob.location) {
-          subtitleParts.push(selectedJob.location);
-        }
-        jobSubtitle.textContent = subtitleParts.join(' · ');
       }
 
       if (jobPills) {

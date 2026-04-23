@@ -99,7 +99,7 @@
         <div class="col-12 col-sm-6 col-xl-3">
           <article class="db-stat-card">
             <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
-            <div class="db-stat-label">Active Job Descriptions</div>
+            <div class="db-stat-label">Active Job Positions</div>
             <div class="db-stat-value">{{ jobs|length }}</div>
           </article>
         </div>
@@ -386,9 +386,7 @@
                 <td class="db-position-cell">
                   <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
                   <div class="db-position-subtitle">
-                    {% if a.job_preference_locked %}
-                      Applicant selected this role.
-                    {% elif a.applied_job %}
+                    {% if a.applied_job %}
                       Matched from the active uploaded job.
                     {% else %}
                       No job match stored yet.

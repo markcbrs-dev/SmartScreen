@@ -40,11 +40,12 @@
     <form class="card" method="post" action="{% url 'login' %}" novalidate>
       {% csrf_token %}
       <h2>HR Login</h2>
-      <p class="subtext">Sign in to access the SmartScreen dashboard.</p>
 
       {% if messages %}
         {% for message in messages %}
-          <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+          {% if not form.errors or message.tags != 'error' %}
+            <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+          {% endif %}
         {% endfor %}
       {% endif %}
 
@@ -53,7 +54,7 @@
       {% endif %}
 
       <div class="field">
-        <label for="id_username">USERNAME</label>
+        <label for="id_username">EMAIL</label>
         <input type="text" name="username" id="id_username" autocomplete="username" required>
       </div>
 

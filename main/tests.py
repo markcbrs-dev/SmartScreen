@@ -47,6 +47,8 @@ class ApplicantFlowTests(TestCase):
 		self.assertContains(response, 'Select a target position')
 		self.assertContains(response, 'Job Description')
 		self.assertContains(response, job.title)
+		self.assertNotContains(response, 'class="job-subtitle"', html=False)
+		self.assertNotContains(response, 'novalidate')
 		self.assertNotContains(response, 'Auto-match me to the best job')
 		self.assertContains(response, 'id="applicantLayout" class="layout layout-collapsed"', html=False)
 		self.assertContains(response, 'id="jobDescriptionCard" class="card job-card is-collapsed"', html=False)
