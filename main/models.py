@@ -1,7 +1,37 @@
 from django.db import models
+from django.contrib.auth.models import User
+from django.contrib.auth.signals import user_logged_in, user_logged_out
+from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 
-# Create your models here.
+# --- NEW MONITORING MODEL ---
+
+class HRActivityLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=50) # e.g., "PAGE_VIEW", "LOGIN", "LOGOUT"
+    path = models.CharField(max_length=255)      # The URL they were looking at
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "HR Activity Logs"
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.event_type} - {self.timestamp}"
+
+# --- SIGNALS FOR LOGIN/LOGOUT ---
+
+@receiver(user_logged_in)
+def log_login(sender, request, user, **kwargs):
+    HRActivityLog.objects.create(user=user, event_type="LOGIN", path=request.path)
+
+@receiver(user_logged_out)
+def log_logout(sender, request, user, **kwargs):
+    HRActivityLog.objects.create(user=user, event_type="LOGOUT", path=request.path)
+
+
+# --- YOUR EXISTING MODELS ---
+
 class Resume(models.Model):
     name = models.CharField(max_length=200)
 
@@ -15,7 +45,6 @@ class Details(models.Model):
     complete = models.BooleanField()
 
     class Meta:
-        # This fixes the "Detailss" spelling in the admin panel
         verbose_name_plural = "Details"
 
 
@@ -45,7 +74,6 @@ class Applicant(models.Model):
     match_notes = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # This line tracks every change made to an applicant for the Audit Log
     history = HistoricalRecords()
 
     def __str__(self):
@@ -72,7 +100,6 @@ class JobDescription(models.Model):
     raw_text = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # This line tracks every change made to a Job for the Audit Log
     history = HistoricalRecords()
 
     def __str__(self):
