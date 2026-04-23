@@ -20,13 +20,11 @@ from .services import (
     update_applicant_from_resume_profile,
 )
 
-
 def _read_sample_job_description_text() -> str:
     sample_path = Path(getattr(settings, 'SAMPLE_JOB_DESCRIPTION_FILE', ''))
     if not sample_path.exists():
         return ''
     return sample_path.read_text(encoding='utf-8', errors='replace').strip()
-
 
 def login_view(request):
     if request.method == 'POST':
@@ -45,9 +43,7 @@ def login_view(request):
             messages.error(request, 'Please correct the errors below.')
     else:
         form = AuthenticationForm()
-
     return render(request, 'main/hr_login.html', {'form': form})
-
 
 def hr_register(request):
     if request.method == 'POST':
@@ -67,24 +63,21 @@ def hr_register(request):
         user = User.objects.create_user(username=email, email=email, password=password,
                                         first_name=first_name, last_name=last_name)
         user.is_staff = True
-        user.is_active = False
+        user.is_active = False # Keep user inactive until admin approval
         user.save()
 
-        messages.success(request, 'Registration successful. You can now log in.')
+        messages.success(request, 'Registration successful. Please wait for admin approval.')
         return redirect('login')
 
     return render(request, 'main/hr_register.html')
-
 
 @login_required
 def logout_view(request):
     if request.method != 'POST':
         return redirect('dashboard')
-
     auth_logout(request)
     messages.success(request, 'Logged out successfully.')
     return redirect('login')
-
 
 @login_required
 def dashboard(request):
@@ -109,6 +102,12 @@ def dashboard(request):
     }
     return render(request, 'main/dashboard.html', context)
 
+# --- NEW VIEW FOR AUDIT LOG ---
+@login_required
+def audit_log_view(request):
+    # This fetches the 50 most recent changes tracked by simple-history
+    logs = Applicant.history.all().order_by('-history_date')[:50]
+    return render(request, 'main/audit_log.html', {'logs': logs})
 
 def apply(request):
     active_job = sync_sample_job_description()

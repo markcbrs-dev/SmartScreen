@@ -1,8 +1,9 @@
 from django.db import models
+from simple_history.models import HistoricalRecords
 
 # Create your models here.
 class Resume(models.Model):
-    name= models.CharField(max_length=200)
+    name = models.CharField(max_length=200)
 
     def __str__(self):
         return self.name
@@ -12,6 +13,10 @@ class Details(models.Model):
     resume = models.ForeignKey(Resume, on_delete=models.CASCADE)
     text = models.CharField(max_length=300)
     complete = models.BooleanField()
+
+    class Meta:
+        # This fixes the "Detailss" spelling in the admin panel
+        verbose_name_plural = "Details"
 
 
 class Applicant(models.Model):
@@ -40,6 +45,9 @@ class Applicant(models.Model):
     match_notes = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # This line tracks every change made to an applicant for the Audit Log
+    history = HistoricalRecords()
+
     def __str__(self):
         return f"{self.first_name} {self.last_name} <{self.email}>"
 
@@ -63,6 +71,9 @@ class JobDescription(models.Model):
     industries = models.JSONField(default=list, blank=True)
     raw_text = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # This line tracks every change made to a Job for the Audit Log
+    history = HistoricalRecords()
 
     def __str__(self):
         return self.title
