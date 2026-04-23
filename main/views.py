@@ -6,25 +6,21 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from .models import Applicant, JobDescription
 import os
-from pathlib import Path
 from django.contrib.auth.decorators import login_required
 
 from .services import (
     build_resume_profile_from_applicant,
     evaluate_best_job_match,
+    get_active_job_description,
     get_active_job_descriptions,
+    get_job_description_by_id,
     parse_resume_upload,
     refresh_applicant_matches,
+    remove_active_job_description,
+    replace_active_job_description,
     serialize_match_result,
-    sync_sample_job_description,
     update_applicant_from_resume_profile,
 )
-
-def _read_sample_job_description_text() -> str:
-    sample_path = Path(getattr(settings, 'SAMPLE_JOB_DESCRIPTION_FILE', ''))
-    if not sample_path.exists():
-        return ''
-    return sample_path.read_text(encoding='utf-8', errors='replace').strip()
 
 def login_view(request):
     if request.method == 'POST':
@@ -81,10 +77,46 @@ def logout_view(request):
 
 @login_required
 def dashboard(request):
-    active_job = sync_sample_job_description()
+    if request.method == 'POST':
+        action = request.POST.get('action', '').strip()
+
+        if action == 'upload_job_description':
+            uploaded_job_file = request.FILES.get('job_description_file')
+            if not uploaded_job_file:
+                messages.error(request, 'Please choose a job description file to upload.')
+                return redirect('dashboard')
+
+            allowed_ext = {'.txt', '.docx'}
+            ext = os.path.splitext(uploaded_job_file.name)[1].lower()
+            if ext not in allowed_ext:
+                messages.error(request, 'Unsupported job description format. Use TXT or DOCX.')
+                return redirect('dashboard')
+
+            max_size = getattr(settings, 'MAX_JOB_DESCRIPTION_SIZE', 512 * 1024)
+            if uploaded_job_file.size > max_size:
+                messages.error(request, f'Job description file too large (max {max_size // 1024} KB).')
+                return redirect('dashboard')
+
+            try:
+                job = replace_active_job_description(uploaded_job_file)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, f'Uploaded job description: {job.title}.')
+            return redirect('dashboard')
+
+        if action == 'remove_job_description':
+            job_id = request.POST.get('job_id', '').strip()
+            if remove_active_job_description(job_id or None):
+                messages.success(request, 'Uploaded job description removed.')
+            else:
+                messages.info(request, 'No uploaded job description to remove.')
+            return redirect('dashboard')
+
+    jobs = get_active_job_descriptions()
+    active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
-    jobs = [active_job] if active_job is not None else []
     total = len(applicants)
     new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
     reviewing_count = sum(1 for applicant in applicants if applicant.status == 'REVIEWING')
@@ -110,12 +142,28 @@ def audit_log_view(request):
     return render(request, 'main/audit_log.html', {'logs': logs})
 
 def apply(request):
-    active_job = sync_sample_job_description()
-    available_jobs = [active_job] if active_job is not None else []
+    available_jobs = get_active_job_descriptions()
+    active_job = available_jobs[0] if available_jobs else None
     context = {
         'available_jobs': available_jobs,
         'active_job': active_job,
-        'active_job_source_text': _read_sample_job_description_text(),
+        'job_details': [
+            {
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'employment_type': job.employment_type,
+                'experience_level': job.experience_level,
+                'remote_option': job.remote_option,
+                'required_skills': list(job.required_skills or []),
+                'responsibilities': list(job.responsibilities or []),
+                'qualifications': list(job.qualifications or []),
+                'education_requirements': list(job.education_requirements or []),
+                'raw_text': job.raw_text or '',
+            }
+            for job in available_jobs
+        ],
     }
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
@@ -144,11 +192,9 @@ def apply(request):
             messages.error(request, f'Resume file too large (max {max_size // 1024 // 1024} MB).')
             return render(request, 'main/applicant.html', context)
 
-        selected_job = None
-        if active_job is not None and selected_job_id == str(active_job.id):
-            selected_job = active_job
+        selected_job = get_job_description_by_id(selected_job_id)
 
-        if active_job is None:
+        if not available_jobs:
             messages.error(request, 'No uploaded job description is available right now.')
             return render(request, 'main/applicant.html', context)
 
@@ -205,8 +251,6 @@ def apply(request):
 
         if parse_error:
             messages.warning(request, f'Application submitted, but resume analysis was limited: {parse_error}')
-        elif applicant.position:
-            messages.success(request, f'Application submitted successfully. Best match: {applicant.position} ({applicant.match_score}%).')
         else:
             messages.success(request, 'Application submitted successfully.')
         return redirect('apply')

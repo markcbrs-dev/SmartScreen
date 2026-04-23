@@ -23,9 +23,7 @@
     html,body{
       height:100%;
       margin:0;
-      background:
-        radial-gradient(circle at top left, rgba(30,115,216,0.16), transparent 30%),
-        linear-gradient(180deg, #eaf2ff 0%, var(--page-bg) 40%, #f8fbff 100%);
+      background:linear-gradient(180deg, #eaf2ff 0%, var(--page-bg) 40%, #f8fbff 100%);
       color:var(--ink);
       overflow:hidden;
     }
@@ -89,6 +87,11 @@
       grid-template-columns:minmax(0, 1.1fr) minmax(320px, 0.9fr);
       gap:18px;
       align-items:stretch;
+      transition:grid-template-columns .28s ease;
+    }
+
+    .layout.layout-collapsed{
+      grid-template-columns:minmax(0, 1fr) 0fr;
     }
 
     .card{
@@ -110,22 +113,23 @@
 
     .job-card{
       height:100%;
+      min-width:0;
       overflow:hidden;
       display:flex;
       flex-direction:column;
+      opacity:1;
+      transform:translateY(0);
+      transition:opacity .24s ease, transform .28s ease, max-height .28s ease, padding .28s ease, border-width .28s ease;
     }
 
-    .job-card::before{
-      content:"";
-      position:absolute;
-      inset:0 0 auto 0;
-      height:110px;
-      background:linear-gradient(135deg, rgba(30,115,216,0.16), rgba(11,94,199,0.04));
+    .job-card.is-collapsed{
+      max-height:0;
+      padding-top:0;
+      padding-bottom:0;
+      border-width:0;
+      opacity:0;
+      transform:translateY(18px);
       pointer-events:none;
-    }
-
-    .job-card > *{
-      position:relative;
     }
 
     .eyebrow{
@@ -454,6 +458,7 @@
   </style>
 </head>
 <body>
+  {{ job_details|json_script:"jobDetailsData" }}
   <header class="header" role="banner">
     <div class="header-left">
       <div class="logo" aria-hidden="true">S</div>
@@ -463,13 +468,13 @@
   </header>
 
   <main class="wrap" role="main">
-    <div class="layout">
+    <div id="applicantLayout" class="layout{% if not request.POST.job_id %} layout-collapsed{% endif %}">
       <form id="profileForm" class="card application-card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
 
         <p class="eyebrow">Applicant Submission</p>
         <h2>Upload your resume</h2>
-        <p class="intro">Submit your application against the currently uploaded job description. The target position is fixed to that uploaded job, and your resume will be scored only against it.</p>
+        <p class="intro">Submit your application against the currently uploaded job description. The target position is populated from the latest HR upload, and your resume will be scored only against that role.</p>
 
         {% if messages %}
           <div class="messages">
@@ -500,12 +505,13 @@
         <div class="field">
           <label for="jobId">Target Position</label>
           <select id="jobId" name="job_id" required>
+            <option value="" {% if not request.POST.job_id %}selected{% endif %}>Select a target position</option>
             {% if active_job %}
               {% for job in available_jobs %}
-                <option value="{{ job.id }}" {% if request.POST.job_id == job.id|stringformat:'s' or not request.POST.job_id %}selected{% endif %}>{{ job.title }}{% if job.company %} - {{ job.company }}{% endif %}</option>
+                <option value="{{ job.id }}" {% if request.POST.job_id == job.id|stringformat:'s' %}selected{% endif %}>{{ job.title }}</option>
               {% endfor %}
             {% else %}
-              <option value="">No uploaded job description available</option>
+              <option value="" disabled>No uploaded job description available</option>
             {% endif %}
           </select>
           <div class="hint">Only the uploaded job description can be selected for this application.</div>
@@ -522,11 +528,9 @@
         </div>
 
         <button type="submit" class="submit" {% if not active_job %}disabled{% endif %}>Submit Application</button>
-
-        <p class="secondary-link">HR access: <a href="{% url 'login' %}">open the dashboard login</a></p>
       </form>
 
-      <aside class="card job-card" aria-labelledby="job-description-title">
+      <aside id="jobDescriptionCard" class="card job-card{% if not request.POST.job_id %} is-collapsed{% endif %}" aria-labelledby="job-description-title" aria-hidden="{% if request.POST.job_id %}false{% else %}true{% endif %}">
         <p class="eyebrow">Job Description</p>
         <div class="job-head">
           <div>
@@ -536,7 +540,7 @@
                 {% if active_job.company %}{{ active_job.company }}{% else %}Company not detected{% endif %}
                 {% if active_job.location %} · {{ active_job.location }}{% endif %}
               {% else %}
-                Upload or sync a job description so applicants can target a specific role.
+                  Upload a job description so applicants can target a specific role.
               {% endif %}
             </p>
           </div>
@@ -618,9 +622,7 @@
               <div class="job-section-header">
                 <h3 class="section-title">Current Job Description</h3>
               </div>
-              {% if active_job_source_text %}
-                <p class="job-raw-text">{{ active_job_source_text }}</p>
-              {% elif active_job.raw_text %}
+              {% if active_job.raw_text %}
                 <p class="job-raw-text">{{ active_job.raw_text }}</p>
               {% else %}
                 <p class="job-empty">The uploaded file exists, but no raw description text is available to preview.</p>
@@ -638,6 +640,16 @@
     const uploadBtn = document.getElementById('uploadBtn');
     const resumeInput = document.getElementById('resumeInput');
     const fileNameEl = document.getElementById('fileName');
+    const applicantLayout = document.getElementById('applicantLayout');
+    const jobIdSelect = document.getElementById('jobId');
+    const jobDescriptionCard = document.getElementById('jobDescriptionCard');
+    const jobDescriptionTitle = document.getElementById('job-description-title');
+    const jobSubtitle = document.querySelector('.job-subtitle');
+    const jobPills = document.querySelector('.job-pills');
+    const jobMeta = document.querySelector('.job-meta');
+    const requiredSkillsSection = document.querySelector('.job-section');
+    const jobSections = document.querySelectorAll('.job-section');
+    const jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
 
     uploadBtn.addEventListener('click', function () {
       resumeInput.click();
@@ -660,6 +672,118 @@
 
       fileNameEl.textContent = file.name;
     });
+
+    function syncJobDescriptionVisibility() {
+      if (!jobIdSelect || !jobDescriptionCard) {
+        return;
+      }
+
+      if (jobIdSelect.value) {
+        jobDescriptionCard.classList.remove('is-collapsed');
+        jobDescriptionCard.setAttribute('aria-hidden', 'false');
+        if (applicantLayout) {
+          applicantLayout.classList.remove('layout-collapsed');
+        }
+      } else {
+        jobDescriptionCard.classList.add('is-collapsed');
+        jobDescriptionCard.setAttribute('aria-hidden', 'true');
+        if (applicantLayout) {
+          applicantLayout.classList.add('layout-collapsed');
+        }
+      }
+    }
+
+    function renderList(items) {
+      return items.map(function (item) {
+        return '<li>' + item + '</li>';
+      }).join('');
+    }
+
+    function renderSkills(skills) {
+      return skills.map(function (skill) {
+        return '<span class="skill-pill">' + skill + '</span>';
+      }).join('');
+    }
+
+    function updateJobDescriptionCard() {
+      if (!jobIdSelect) {
+        return;
+      }
+
+      const selectedId = Number(jobIdSelect.value);
+      const selectedJob = jobDetailsData.find(function (job) {
+        return job.id === selectedId;
+      });
+
+      if (!selectedJob || !jobDescriptionCard) {
+        return;
+      }
+
+      if (jobDescriptionTitle) {
+        jobDescriptionTitle.textContent = selectedJob.title || 'No job description';
+      }
+
+      if (jobSubtitle) {
+        const subtitleParts = [];
+        subtitleParts.push(selectedJob.company || 'Company not detected');
+        if (selectedJob.location) {
+          subtitleParts.push(selectedJob.location);
+        }
+        jobSubtitle.textContent = subtitleParts.join(' · ');
+      }
+
+      if (jobPills) {
+        const pills = [];
+        if (selectedJob.remote_option) {
+          pills.push('<span class="job-pill">Remote-friendly</span>');
+        }
+        if (selectedJob.employment_type) {
+          pills.push('<span class="job-pill">' + selectedJob.employment_type + '</span>');
+        }
+        if (selectedJob.experience_level) {
+          pills.push('<span class="job-pill">' + selectedJob.experience_level + '</span>');
+        }
+        jobPills.innerHTML = pills.join('');
+      }
+
+      if (jobMeta) {
+        jobMeta.innerHTML = [
+          '<div class="job-meta-item"><span class="job-meta-label">Company</span><div class="job-meta-value">' + (selectedJob.company || 'Not detected') + '</div></div>',
+          '<div class="job-meta-item"><span class="job-meta-label">Location</span><div class="job-meta-value">' + (selectedJob.location || 'Not detected') + '</div></div>',
+          '<div class="job-meta-item"><span class="job-meta-label">Employment Type</span><div class="job-meta-value">' + (selectedJob.employment_type || 'Not detected') + '</div></div>',
+          '<div class="job-meta-item"><span class="job-meta-label">Experience Level</span><div class="job-meta-value">' + (selectedJob.experience_level || 'Not detected') + '</div></div>'
+        ].join('');
+      }
+
+      if (jobSections.length >= 3) {
+        const skillsSection = jobSections[0];
+        const responsibilitiesSection = jobSections[1];
+        const qualificationsSection = jobSections[2];
+        const descriptionSection = jobSections[jobSections.length - 1];
+
+        skillsSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Required Skills</h3></div>' +
+          (selectedJob.required_skills.length ? '<div class="skill-pills">' + renderSkills(selectedJob.required_skills) + '</div>' : '<p class="job-empty">No structured required skills were extracted from the uploaded job description.</p>');
+
+        responsibilitiesSection.style.display = selectedJob.responsibilities.length ? '' : 'none';
+        responsibilitiesSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Responsibilities</h3></div><ul class="job-list">' + renderList(selectedJob.responsibilities.slice(0, 6)) + '</ul>';
+
+        const qualificationItems = selectedJob.qualifications.slice(0, 4).concat(selectedJob.education_requirements.slice(0, 3));
+        qualificationsSection.style.display = qualificationItems.length ? '' : 'none';
+        qualificationsSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Qualifications</h3></div><ul class="job-list">' + renderList(qualificationItems) + '</ul>';
+
+        descriptionSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Current Job Description</h3></div>' +
+          (selectedJob.raw_text ? '<p class="job-raw-text">' + selectedJob.raw_text + '</p>' : '<p class="job-empty">The uploaded file exists, but no raw description text is available to preview.</p>');
+      }
+    }
+
+    if (jobIdSelect) {
+      jobIdSelect.addEventListener('change', function () {
+        syncJobDescriptionVisibility();
+        updateJobDescriptionCard();
+      });
+      syncJobDescriptionVisibility();
+      updateJobDescriptionCard();
+    }
   </script>
 </body>
 </html>
