@@ -4,12 +4,12 @@ from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 
-# --- NEW MONITORING MODEL ---
+# --- MONITORING MODEL ---
 
 class HRActivityLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    event_type = models.CharField(max_length=50) # e.g., "PAGE_VIEW", "LOGIN", "LOGOUT"
-    path = models.CharField(max_length=255)      # The URL they were looking at
+    event_type = models.CharField(max_length=50) # e.g., "LOGIN", "LOGOUT"
+    path = models.CharField(max_length=255)      # The URL accessed
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -23,14 +23,17 @@ class HRActivityLog(models.Model):
 
 @receiver(user_logged_in)
 def log_login(sender, request, user, **kwargs):
-    HRActivityLog.objects.create(user=user, event_type="LOGIN", path=request.path)
+    # Only log if the user is staff (HR or Admin)
+    if user.is_staff:
+        HRActivityLog.objects.create(user=user, event_type="LOGIN", path=request.path)
 
 @receiver(user_logged_out)
 def log_logout(sender, request, user, **kwargs):
-    HRActivityLog.objects.create(user=user, event_type="LOGOUT", path=request.path)
+    if user.is_staff:
+        HRActivityLog.objects.create(user=user, event_type="LOGOUT", path=request.path)
 
 
-# --- YOUR EXISTING MODELS ---
+# --- DATA MODELS ---
 
 class Resume(models.Model):
     name = models.CharField(max_length=200)
@@ -76,6 +79,24 @@ class Applicant(models.Model):
 
     history = HistoricalRecords()
 
+    def save(self, *args, **kwargs):
+        # 1. Attribute the change to the Job Uploader
+        if self.applied_job:
+            # We look for the first history entry (creation) of the job description
+            # to find the original uploader
+            job_uploader_entry = self.applied_job.history.order_by('history_date').first()
+            
+            if job_uploader_entry and job_uploader_entry.history_user:
+                # Set the history user for this applicant to the job uploader
+                self._history_user = job_uploader_entry.history_user
+
+        # 2. Safety check: Disable history logging if the person isn't staff
+        if hasattr(self, '_history_user') and self._history_user:
+            if not self._history_user.is_staff:
+                self.skip_history_when_saving = True
+        
+        super(Applicant, self).save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.first_name} {self.last_name} <{self.email}>"
 
@@ -102,5 +123,26 @@ class JobDescription(models.Model):
 
     history = HistoricalRecords()
 
+    def save(self, *args, **kwargs):
+        # Skip history if user is not staff
+        if hasattr(self, '_history_user') and self._history_user:
+            if not self._history_user.is_staff:
+                self.skip_history_when_saving = True
+        super(JobDescription, self).save(*args, **kwargs)
+
     def __str__(self):
         return self.title
+
+# --- PROXY MODELS ---
+
+class AdminUser(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'Admin Account'
+        verbose_name_plural = 'Admin Accounts'
+
+class HRUser(User):
+    class Meta:
+        proxy = True
+        verbose_name = 'HR Account'
+        verbose_name_plural = 'HR Accounts'
