@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
+from django.urls import reverse
 from .models import Applicant, JobDescription
 import os
 from django.contrib.auth.decorators import login_required
@@ -77,6 +78,12 @@ def logout_view(request):
 
 @login_required
 def dashboard(request):
+    def redirect_to_dashboard(panel: str | None = None):
+        url = reverse('dashboard')
+        if panel:
+            url = f'{url}?panel={panel}'
+        return redirect(url)
+
     if request.method == 'POST':
         action = request.POST.get('action', '').strip()
 
@@ -84,18 +91,18 @@ def dashboard(request):
             uploaded_job_file = request.FILES.get('job_description_file')
             if not uploaded_job_file:
                 messages.error(request, 'Please choose a job description file to upload.')
-                return redirect('dashboard')
+                return redirect_to_dashboard('jobs')
 
             allowed_ext = {'.txt', '.docx'}
             ext = os.path.splitext(uploaded_job_file.name)[1].lower()
             if ext not in allowed_ext:
                 messages.error(request, 'Unsupported job description format. Use TXT or DOCX.')
-                return redirect('dashboard')
+                return redirect_to_dashboard('jobs')
 
             max_size = getattr(settings, 'MAX_JOB_DESCRIPTION_SIZE', 512 * 1024)
             if uploaded_job_file.size > max_size:
                 messages.error(request, f'Job description file too large (max {max_size // 1024} KB).')
-                return redirect('dashboard')
+                return redirect_to_dashboard('jobs')
 
             try:
                 job = replace_active_job_description(uploaded_job_file)
@@ -103,7 +110,7 @@ def dashboard(request):
                 messages.error(request, str(exc))
             else:
                 messages.success(request, f'Uploaded job description: {job.title}.')
-            return redirect('dashboard')
+            return redirect_to_dashboard('jobs')
 
         if action == 'remove_job_description':
             job_id = request.POST.get('job_id', '').strip()
@@ -111,7 +118,7 @@ def dashboard(request):
                 messages.success(request, 'Uploaded job description removed.')
             else:
                 messages.info(request, 'No uploaded job description to remove.')
-            return redirect('dashboard')
+            return redirect_to_dashboard('jobs')
 
     jobs = get_active_job_descriptions()
     active_job = jobs[0] if jobs else None
