@@ -14,17 +14,8 @@
   <div class="db-topnav-inner">
     <div class="d-flex align-items-center gap-3">
       <div class="db-brand-mark" aria-hidden="true">S</div>
-      <div>
         <div class="db-brand-text">SMARTSCREEN</div>
         <div class="db-brand-subtitle">HR Dashboard</div>
-      </div>
-    </div>
-    <div class="d-flex align-items-center gap-3">
-      <div class="db-icon-pill">
-        <i class="bi bi-bell"></i>
-      </div>
-      <div class="db-user-avatar">
-        <i class="bi bi-person-fill"></i>
       </div>
     </div>
   </div>
@@ -52,6 +43,18 @@
         <i class="bi bi-grid-1x2-fill"></i>
         <span>Dashboard</span>
       </a>
+      <button
+        type="button"
+        class="db-nav-link db-nav-button"
+        id="activeJobsToggle"
+        aria-controls="activeJobsSection"
+        aria-expanded="false"
+      >
+        <span class="db-nav-button-main">
+          <i class="bi bi-briefcase-fill"></i>
+          <span>Active Job Positions</span>
+        </span>
+      </button>
       <div class="db-nav-group">
         <button
           type="button"
@@ -88,164 +91,339 @@
         {% endfor %}
       {% endif %}
 
-      <section class="row g-3 mb-4 db-stat-row">
-        <div class="col-12 col-sm-6 col-xl-3">
-          <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-people-fill"></i></div>
-            <div class="db-stat-label">Total Applicants</div>
-            <div class="db-stat-value">{{ total }}</div>
-          </article>
-        </div>
-        <div class="col-12 col-sm-6 col-xl-3">
-          <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
-            <div class="db-stat-label">Active Job Descriptions</div>
-            <div class="db-stat-value">{{ jobs|length }}</div>
-          </article>
-        </div>
-        <div class="col-12 col-sm-6 col-xl-3">
-          <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-person-plus-fill"></i></div>
-            <div class="db-stat-label">New Applicants</div>
-            <div class="db-stat-value">{{ new_count }}</div>
-          </article>
-        </div>
-        <div class="col-12 col-sm-6 col-xl-3">
-          <article class="db-stat-card">
-            <div class="db-stat-icon"><i class="bi bi-search-heart-fill"></i></div>
-            <div class="db-stat-label">Under Review</div>
-            <div class="db-stat-value">{{ reviewing_count }}</div>
-          </article>
-        </div>
-      </section>
+      <section class="db-main-section" id="dashboardSection">
+        <section class="row g-3 mb-4 db-stat-row">
+          <div class="col-12 col-sm-6 col-xl-3">
+            <article class="db-stat-card">
+              <div class="db-stat-icon"><i class="bi bi-people-fill"></i></div>
+              <div class="db-stat-label">Total Applicants</div>
+              <div class="db-stat-value">{{ total }}</div>
+            </article>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <article class="db-stat-card">
+              <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
+              <div class="db-stat-label">Active Job Positions</div>
+              <div class="db-stat-value">{{ jobs|length }}</div>
+            </article>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <article class="db-stat-card">
+              <div class="db-stat-icon"><i class="bi bi-person-plus-fill"></i></div>
+              <div class="db-stat-label">New Applicants</div>
+              <div class="db-stat-value">{{ new_count }}</div>
+            </article>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <article class="db-stat-card">
+              <div class="db-stat-icon"><i class="bi bi-search-heart-fill"></i></div>
+              <div class="db-stat-label">Under Review</div>
+              <div class="db-stat-value">{{ reviewing_count }}</div>
+            </article>
+          </div>
+        </section>
 
-      <section class="db-card-grid">
-        <article class="db-table-card db-upload-card">
-          <div class="db-table-toolbar db-tight-toolbar">
+        <section class="db-table-card">
+          <div class="db-table-toolbar">
             <div>
-              <h2 class="db-section-title">Active Job Description</h2>
-              <p class="db-section-copy">Matching now uses the built-in sample job description file stored with the project.</p>
+              <h2 class="db-section-title">Applicant Directory</h2>
+              <p class="db-section-copy">Review submissions, inspect extracted skills, and open uploaded resumes.</p>
+            </div>
+            <div class="db-search-box">
+              <i class="bi bi-search"></i>
+              <input type="text" id="searchInput" placeholder="Search applicants" class="db-search-input">
             </div>
           </div>
-          {% if active_job %}
-            <article class="db-job-card">
-              <div class="db-job-header">
-                <div>
-                  <h3 class="db-job-title">{{ active_job.title }}</h3>
-                  <p class="db-job-subtitle">
-                    {% if active_job.company %}{{ active_job.company }}{% else %}Company not detected{% endif %}
-                    {% if active_job.location %} · {{ active_job.location }}{% endif %}
-                  </p>
-                </div>
-                {% if active_job.remote_option %}
-                  <span class="db-job-pill">Remote-friendly</span>
-                {% endif %}
-              </div>
 
-              <div class="db-job-meta">
-                <span><strong>Experience:</strong> {{ active_job.experience_level|default:'Not detected' }}</span>
-                <span><strong>Type:</strong> {{ active_job.employment_type|default:'Not detected' }}</span>
-              </div>
-
-              <p class="db-job-skills-label">Required skills</p>
-              <div class="db-skill-list">
-                {% for skill in active_job.required_skills|slice:':8' %}
-                  <span class="db-skill-pill">{{ skill }}</span>
-                {% empty %}
-                  <span class="text-muted">No structured skills extracted yet.</span>
-                {% endfor %}
-              </div>
-
-              <p class="db-form-help mt-3 mb-0">Source file: Job Description Sample.txt</p>
-            </article>
-          {% else %}
-            <div class="text-muted">The sample job description file could not be found.</div>
-          {% endif %}
-        </article>
-      </section>
-
-      <section class="db-table-card">
-        <div class="db-table-toolbar">
-          <div>
-            <h2 class="db-section-title">Applicant Directory</h2>
-            <p class="db-section-copy">Review submissions, inspect extracted skills, and open uploaded resumes.</p>
-          </div>
-          <div class="db-search-box">
-            <i class="bi bi-search"></i>
-            <input type="text" id="searchInput" placeholder="Search applicants" class="db-search-input">
-          </div>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table db-table mb-0" id="applicantsTable">
-            <thead>
-              <tr>
-                <th>Applicant</th>
-                <th>Position</th>
-                <th>Status</th>
-                <th>Match</th>
-                <th>Applied Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for a in applicants %}
-              <tr>
-                <td>
-                  <div class="db-applicant-cell">
-                    <div class="db-applicant-avatar">
-                      {{ a.first_name|slice:":1"|upper }}{{ a.last_name|slice:":1"|upper }}
+          <div class="table-responsive">
+            <table class="table db-table mb-0" id="applicantsTable">
+              <thead>
+                <tr>
+                  <th>Applicant</th>
+                  <th>Position</th>
+                  <th>Status</th>
+                  <th>Match</th>
+                  <th>Applied Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in applicants %}
+                <tr>
+                  <td>
+                    <div class="db-applicant-cell">
+                      <div class="db-applicant-avatar">
+                        {{ a.first_name|slice:":1"|upper }}{{ a.last_name|slice:":1"|upper }}
+                      </div>
+                      <div>
+                        <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
+                        <div class="db-applicant-email">{{ a.email }}</div>
+                        {% if a.parsed_skills %}
+                          <div class="db-applicant-meta">Skills: {{ a.parsed_skills|slice:":4"|join:", " }}</div>
+                        {% endif %}
+                      </div>
                     </div>
-                    <div>
-                      <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
-                      <div class="db-applicant-email">{{ a.email }}</div>
-                      {% if a.parsed_skills %}
-                        <div class="db-applicant-meta">Skills: {{ a.parsed_skills|slice:":4"|join:", " }}</div>
+                  </td>
+                  <td class="db-position-cell">
+                    <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
+                    <div class="db-position-subtitle">
+                      {% if a.applied_job %}
+                        
+                      {% else %}
+                        No job match stored yet.
                       {% endif %}
                     </div>
-                  </div>
-                </td>
-                <td class="db-position-cell">
-                  <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
-                  <div class="db-position-subtitle">
-                    {% if a.job_preference_locked %}
-                      Applicant selected this role.
-                    {% elif a.applied_job %}
-                      Auto-matched from the active sample job.
-                    {% else %}
-                      No job match stored yet.
+                  </td>
+                  <td>
+                    <span class="db-status db-status-{{ a.status|lower }}">{{ a.status }}</span>
+                  </td>
+                  <td class="db-match-cell">
+                    <div class="db-bar-bg">
+                      <div class="db-bar-fill" data-score="{{ a.match_score }}"></div>
+                    </div>
+                    <span class="db-match-pct">{{ a.match_score }}%</span>
+                    {% if a.match_notes.matching_skills %}
+                      <div class="db-match-caption">Matched: {{ a.match_notes.matching_skills|slice:":3"|join:", " }}</div>
                     {% endif %}
+                  </td>
+                  <td>{{ a.created_at|date:"M j, Y" }}</td>
+                  <td>
+                    {% if a.resume %}
+                      <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
+                    {% else %}
+                      <span class="text-muted">Unavailable</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="db-main-section" id="activeJobsSection" hidden>
+        <section class="db-card-grid db-card-grid-jobs">
+          <article class="db-table-card db-upload-card">
+          <div class="db-table-toolbar db-tight-toolbar">
+            <div>
+              <h2 class="db-section-title">Upload Job Description</h2>
+              <p class="db-section-copy">Upload a TXT or DOCX file to make it the active job description for applicant matching.</p>
+            </div>
+          </div>
+          <form method="post" enctype="multipart/form-data" class="db-upload-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload_job_description">
+            <div class="db-form-grid">
+              <label class="db-field-label" for="jobDescriptionFile">Job Description File</label>
+              <input
+                id="jobDescriptionFile"
+                type="file"
+                name="job_description_file"
+                class="db-form-input db-form-file"
+                accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                required
+              >
+              <p class="db-form-help">Accepted formats: TXT and DOCX. Maximum file size: 512 KB.</p>
+            </div>
+            <button type="submit" class="db-btn-resume db-form-submit">Upload Job Description</button>
+          </form>
+          </article>
+
+          <div class="db-jobs-grid db-jobs-grid-compact">
+            {% for job in jobs %}
+        <article class="db-table-card db-upload-card db-uploaded-job-card db-uploaded-job-card-compact">
+          <div class="db-uploaded-job-preview">
+            <div class="db-job-detail-head db-job-detail-head-card">
+              <div class="db-job-detail-head-main">
+                <h3 class="db-job-detail-name">{{ job.title }}</h3>
+                <p class="db-job-detail-subtitle">
+                  {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
+                  {% if job.location %} · {{ job.location }}{% endif %}
+                </p>
+                <div class="db-job-detail-pills">
+                  {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
+                  {% if not job.employment_type and job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
+                </div>
+              </div>
+            </div>
+
+            <div class="db-job-detail-meta">
+              <div class="db-job-detail-meta-item">
+                <span class="db-job-detail-meta-label">Company</span>
+                <div class="db-job-detail-meta-value">{{ job.company|default:'Not detected' }}</div>
+              </div>
+              <div class="db-job-detail-meta-item">
+                <span class="db-job-detail-meta-label">Location</span>
+                <div class="db-job-detail-meta-value">{{ job.location|default:'Not detected' }}</div>
+              </div>
+              <div class="db-job-detail-meta-item">
+                <span class="db-job-detail-meta-label">Employment Type</span>
+                <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
+              </div>
+              <div class="db-job-detail-meta-item">
+                <span class="db-job-detail-meta-label">Experience Level</span>
+                <div class="db-job-detail-meta-value">{{ job.experience_level|default:'Not detected' }}</div>
+              </div>
+            </div>
+
+            <section class="db-job-detail-section">
+              <div class="db-job-detail-section-header">
+                <h4 class="db-job-detail-section-title">Required Skills</h4>
+              </div>
+              {% if job.required_skills %}
+                <div class="db-job-detail-skill-pills">
+                  {% for skill in job.required_skills|slice:':8' %}
+                    <span class="db-job-detail-skill-pill">{{ skill }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="db-job-detail-empty">No structured required skills were extracted from the uploaded job description.</p>
+              {% endif %}
+            </section>
+
+            <div class="db-card-actions db-card-actions-card">
+              {% if job.raw_text %}
+              <button
+                type="button"
+                class="db-card-action-icon db-card-action-icon-view js-open-job-dialog"
+                data-dialog-id="jobDescriptionDialog-{{ job.id }}"
+                aria-label="View uploaded job description"
+                title="View uploaded job description"
+              >
+                <i class="bi bi-eye-fill"></i>
+              </button>
+              {% endif %}
+              <form method="post" class="db-inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="remove_job_description">
+                <input type="hidden" name="job_id" value="{{ job.id }}">
+                <button
+                  type="submit"
+                  class="db-card-action-icon db-card-action-icon-remove"
+                  aria-label="Remove uploaded job description"
+                  title="Remove uploaded job description"
+                >
+                  <i class="bi bi-trash3-fill"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+            {% if job.raw_text %}
+            <dialog class="db-dialog" id="jobDescriptionDialog-{{ job.id }}">
+              <div class="db-dialog-shell">
+                <div class="db-dialog-header">
+                  <div>
+                    <h3 class="db-dialog-title">{{ job.title }}</h3>
+                    <p class="db-dialog-subtitle">Full uploaded job description</p>
                   </div>
-                </td>
-                <td>
-                  <span class="db-status db-status-{{ a.status|lower }}">{{ a.status }}</span>
-                </td>
-                <td class="db-match-cell">
-                  <div class="db-bar-bg">
-                    <div class="db-bar-fill" data-score="{{ a.match_score }}"></div>
+                  <button
+                    type="button"
+                    class="db-dialog-close js-close-job-dialog"
+                    data-dialog-id="jobDescriptionDialog-{{ job.id }}"
+                    aria-label="Close job description view"
+                  >
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+                <div class="db-dialog-content">
+                  <div class="db-job-detail-head">
+                    <div>
+                      <h4 class="db-job-detail-name">{{ job.title }}</h4>
+                      <p class="db-job-detail-subtitle">
+                        {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
+                        {% if job.location %} · {{ job.location }}{% endif %}
+                      </p>
+                    </div>
+                    <div class="db-job-detail-pills">
+                      {% if job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
+                      {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
+                      {% if job.experience_level %}<span class="db-job-detail-pill">{{ job.experience_level }}</span>{% endif %}
+                    </div>
                   </div>
-                  <span class="db-match-pct">{{ a.match_score }}%</span>
-                  {% if a.match_notes.matching_skills %}
-                    <div class="db-match-caption">Matched: {{ a.match_notes.matching_skills|slice:":3"|join:", " }}</div>
+
+                  <div class="db-job-detail-meta">
+                    <div class="db-job-detail-meta-item">
+                      <span class="db-job-detail-meta-label">Company</span>
+                      <div class="db-job-detail-meta-value">{{ job.company|default:'Not detected' }}</div>
+                    </div>
+                    <div class="db-job-detail-meta-item">
+                      <span class="db-job-detail-meta-label">Location</span>
+                      <div class="db-job-detail-meta-value">{{ job.location|default:'Not detected' }}</div>
+                    </div>
+                    <div class="db-job-detail-meta-item">
+                      <span class="db-job-detail-meta-label">Employment Type</span>
+                      <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
+                    </div>
+                    <div class="db-job-detail-meta-item">
+                      <span class="db-job-detail-meta-label">Experience Level</span>
+                      <div class="db-job-detail-meta-value">{{ job.experience_level|default:'Not detected' }}</div>
+                    </div>
+                  </div>
+
+                  <section class="db-job-detail-section">
+                    <div class="db-job-detail-section-header">
+                      <h4 class="db-job-detail-section-title">Required Skills</h4>
+                    </div>
+                    {% if job.required_skills %}
+                      <div class="db-job-detail-skill-pills">
+                        {% for skill in job.required_skills %}
+                          <span class="db-job-detail-skill-pill">{{ skill }}</span>
+                        {% endfor %}
+                      </div>
+                    {% else %}
+                      <p class="db-job-detail-empty">No structured required skills were extracted from the uploaded job description.</p>
+                    {% endif %}
+                  </section>
+
+                  {% if job.responsibilities %}
+                  <section class="db-job-detail-section">
+                    <div class="db-job-detail-section-header">
+                      <h4 class="db-job-detail-section-title">Responsibilities</h4>
+                    </div>
+                    <ul class="db-job-detail-list">
+                      {% for item in job.responsibilities|slice:':6' %}
+                        <li>{{ item }}</li>
+                      {% endfor %}
+                    </ul>
+                  </section>
                   {% endif %}
-                </td>
-                <td>{{ a.created_at|date:"M j, Y" }}</td>
-                <td>
-                  {% if a.resume %}
-                    <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
-                  {% else %}
-                    <span class="text-muted">Unavailable</span>
+
+                  {% if job.qualifications or job.education_requirements %}
+                  <section class="db-job-detail-section">
+                    <div class="db-job-detail-section-header">
+                      <h4 class="db-job-detail-section-title">Qualifications</h4>
+                    </div>
+                    <ul class="db-job-detail-list">
+                      {% for item in job.qualifications|slice:':4' %}
+                        <li>{{ item }}</li>
+                      {% endfor %}
+                      {% for item in job.education_requirements|slice:':3' %}
+                        <li>{{ item }}</li>
+                      {% endfor %}
+                    </ul>
+                  </section>
                   {% endif %}
-                </td>
-              </tr>
-              {% empty %}
-              <tr>
-                <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+
+                  <section class="db-job-detail-section">
+                    <div class="db-job-detail-section-header">
+                      <h4 class="db-job-detail-section-title">Current Job Description</h4>
+                    </div>
+                    <p class="db-job-detail-raw-text">{{ job.raw_text }}</p>
+                  </section>
+                </div>
+              </div>
+            </dialog>
+            {% endif %}
+        </article>
+            {% empty %}
+              <div class="db-table-card db-empty-state">No job description has been uploaded yet.</div>
+            {% endfor %}
+          </div>
       </section>
 
     </div>
@@ -259,11 +437,35 @@
   const sidebarToggle = document.getElementById('sidebarToggle');
   const settingsToggle = document.getElementById('settingsToggle');
   const settingsMenu = document.getElementById('settingsMenu');
+  const dashboardSection = document.getElementById('dashboardSection');
+  const activeJobsSection = document.getElementById('activeJobsSection');
+  const activeJobsToggle = document.getElementById('activeJobsToggle');
+  const dashboardLink = document.querySelector("a[href='{% url 'dashboard' %}']");
+  const currentUrl = new URL(window.location.href);
+
+  function setDashboardPanel(panel) {
+    const showJobs = panel === 'jobs';
+    dashboardSection.hidden = showJobs;
+    activeJobsSection.hidden = !showJobs;
+    activeJobsToggle.setAttribute('aria-expanded', String(showJobs));
+    activeJobsToggle.classList.toggle('db-nav-active', showJobs);
+    dashboardLink.classList.toggle('db-nav-active', !showJobs);
+
+    if (showJobs) {
+      currentUrl.searchParams.set('panel', 'jobs');
+    } else {
+      currentUrl.searchParams.delete('panel');
+    }
+
+    window.history.replaceState({}, '', currentUrl);
+  }
 
   document.querySelectorAll('.db-bar-fill').forEach(function (bar) {
     const score = Math.max(0, Math.min(100, Number(bar.dataset.score || 0)));
     bar.style.width = score + '%';
   });
+
+  setDashboardPanel(currentUrl.searchParams.get('panel') === 'jobs' ? 'jobs' : 'dashboard');
 
   sidebarToggle.addEventListener('click', function () {
     const isOpen = sidebar.classList.toggle('db-sidebar-open');
@@ -285,10 +487,56 @@
     settingsToggle.classList.toggle('db-nav-open', !isExpanded);
   });
 
+  dashboardLink.addEventListener('click', function (event) {
+    event.preventDefault();
+    setDashboardPanel('dashboard');
+  });
+
+  activeJobsToggle.addEventListener('click', function () {
+    setDashboardPanel('jobs');
+    settingsMenu.hidden = true;
+    settingsToggle.setAttribute('aria-expanded', 'false');
+    settingsToggle.classList.remove('db-nav-open');
+  });
+
   document.getElementById('searchInput').addEventListener('input', function () {
     const val = this.value.toLowerCase();
     document.querySelectorAll('#applicantsTable tbody tr').forEach(function (row) {
       row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    });
+  });
+
+  document.querySelectorAll('.js-open-job-dialog').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const dialog = document.getElementById(button.dataset.dialogId);
+      if (dialog) {
+        dialog.showModal();
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-close-job-dialog').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const dialog = document.getElementById(button.dataset.dialogId);
+      if (dialog) {
+        dialog.close();
+      }
+    });
+  });
+
+  document.querySelectorAll('.db-dialog').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      const bounds = dialog.getBoundingClientRect();
+      const clickedOutside = (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      );
+
+      if (clickedOutside) {
+        dialog.close();
+      }
     });
   });
 </script>

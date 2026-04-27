@@ -1,7 +1,6 @@
+import os
 from functools import lru_cache
-from pathlib import Path
 
-from django.conf import settings
 from django.core.files.base import File
 
 from main.models import JobDescription
@@ -10,8 +9,6 @@ from .entities import JobProfile, ResumeProfile
 from .job_parser import JobDescriptionParser
 from .matcher import ResumeJobMatcher
 from .resume_parser import ResumeParser
-
-SAMPLE_JOB_STORAGE_NAME = 'jobs/job-description-sample.txt'
 
 
 @lru_cache(maxsize=1)
@@ -37,32 +34,46 @@ def parse_job_upload(file_obj) -> JobProfile:
     return get_job_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
-def sync_sample_job_description() -> JobDescription | None:
-    sample_path = Path(getattr(settings, 'SAMPLE_JOB_DESCRIPTION_FILE', ''))
-    if not sample_path.exists():
+def get_active_job_description() -> JobDescription | None:
+    return JobDescription.objects.order_by('-created_at', '-id').first()
+
+
+def get_job_description_by_id(job_id) -> JobDescription | None:
+    if not job_id:
         return None
+    return JobDescription.objects.filter(id=job_id).first()
 
-    with sample_path.open('rb') as sample_file:
-        profile = parse_job_upload(sample_file)
 
-    resolved_title = profile.title or sample_path.stem.replace('_', ' ').replace('-', ' ').strip()
-    job = JobDescription.objects.filter(description_file=SAMPLE_JOB_STORAGE_NAME).first()
-    if job is None:
-        job = JobDescription.objects.filter(title=resolved_title).first()
-    if job is None:
-        job = JobDescription(title=resolved_title)
+def _delete_job_description(job: JobDescription) -> None:
+    if job.description_file:
+        job.description_file.delete(save=False)
+    job.delete()
 
-    job.title = resolved_title
-    with sample_path.open('rb') as sample_file:
-        job.description_file.save(SAMPLE_JOB_STORAGE_NAME, File(sample_file), save=False)
+
+def replace_active_job_description(file_obj) -> JobDescription:
+    profile = parse_job_upload(file_obj)
+    filename = os.path.basename(getattr(file_obj, 'name', '') or 'uploaded-job-description.txt')
+    resolved_title = profile.title or os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ').strip() or 'Uploaded Job Description'
+
+    job = JobDescription(title=resolved_title)
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0)
+    job.description_file.save(f'jobs/{filename}', File(file_obj), save=False)
     update_job_from_profile(job, profile)
     job.save()
     return job
 
 
+def remove_active_job_description(job_id=None) -> bool:
+    job = get_job_description_by_id(job_id) if job_id is not None else get_active_job_description()
+    if job is None:
+        return False
+    _delete_job_description(job)
+    return True
+
+
 def get_active_job_descriptions() -> list[JobDescription]:
-    active_job = sync_sample_job_description()
-    return [active_job] if active_job is not None else []
+    return list(JobDescription.objects.order_by('-created_at', '-id'))
 
 
 def update_applicant_from_resume_profile(applicant, profile: ResumeProfile) -> None:
@@ -106,7 +117,12 @@ def build_resume_profile_from_applicant(applicant) -> ResumeProfile:
 
 
 def refresh_applicant_match(applicant, active_job: JobDescription | None):
-    if active_job is None:
+    target_job = applicant.applied_job
+    if target_job is None and applicant.job_preference_locked:
+        return applicant, None
+    if target_job is None:
+        target_job = active_job
+    if target_job is None:
         return applicant, None
 
     has_parsed_resume = bool(
@@ -132,11 +148,11 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     resume_profile = build_resume_profile_from_applicant(applicant)
     match_result = get_matcher().match_resume_to_job(
         resume_profile,
-        build_job_profile_from_model(active_job),
+        build_job_profile_from_model(target_job),
     )
 
-    applicant.applied_job = active_job
-    applicant.position = active_job.title
+    applicant.applied_job = target_job
+    applicant.position = target_job.title
     applicant.match_score = round(match_result.overall_score * 100)
     applicant.match_notes = serialize_match_result(match_result)
     applicant.save(update_fields=[
