@@ -14,17 +14,8 @@
   <div class="db-topnav-inner">
     <div class="d-flex align-items-center gap-3">
       <div class="db-brand-mark" aria-hidden="true">S</div>
-      <div>
         <div class="db-brand-text">SMARTSCREEN</div>
         <div class="db-brand-subtitle">HR Dashboard</div>
-      </div>
-    </div>
-    <div class="d-flex align-items-center gap-3">
-      <div class="db-icon-pill">
-        <i class="bi bi-bell"></i>
-      </div>
-      <div class="db-user-avatar">
-        <i class="bi bi-person-fill"></i>
       </div>
     </div>
   </div>
@@ -177,7 +168,7 @@
                     <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
                     <div class="db-position-subtitle">
                       {% if a.applied_job %}
-                        Matched from the active uploaded job.
+                        
                       {% else %}
                         No job match stored yet.
                       {% endif %}
