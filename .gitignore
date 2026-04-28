@@ -56,6 +56,7 @@ Thumbs.db
 
 # pandas/pickle artifacts
 *.pkl
+models/spacy_job_classifier/
 
 # mypy
 .mypy_cache/

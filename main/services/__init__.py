@@ -1,7 +1,10 @@
 from .entities import JobMatchResult, JobProfile, ResumeProfile
 from .recruitment import (
+    extract_about_job_onward_text,
     build_resume_profile_from_applicant,
+    extract_description_preview_text,
     evaluate_best_job_match,
+    extract_job_description_section,
     get_active_job_description,
     get_active_job_descriptions,
     get_job_description_by_id,
@@ -20,8 +23,11 @@ __all__ = [
     'JobMatchResult',
     'JobProfile',
     'ResumeProfile',
+    'extract_about_job_onward_text',
     'build_resume_profile_from_applicant',
+    'extract_description_preview_text',
     'evaluate_best_job_match',
+    'extract_job_description_section',
     'get_active_job_description',
     'get_active_job_descriptions',
     'get_job_description_by_id',

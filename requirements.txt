@@ -6,6 +6,7 @@ pandas
 pdfplumber
 numpy
 scikit-learn
+spacy
 # Optional enhancement: spacy
 # Optional model download: python -m spacy download en_core_web_sm
 

@@ -79,8 +79,9 @@ class JobDescriptionParser:
 
         lines = []
         for paragraph in document.paragraphs[:self.MAX_DOCX_PARAGRAPHS]:
-            if paragraph.text.strip():
-                lines.append(paragraph.text.strip())
+            formatted_paragraph = self._format_docx_paragraph(paragraph)
+            if formatted_paragraph:
+                lines.append(formatted_paragraph)
             if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
                 break
 
@@ -267,6 +268,32 @@ class JobDescriptionParser:
     def extract_qualifications(self, text: str) -> list[str]:
         return self._extract_section_items(text, ['qualifications', 'requirements', 'must have'], limit=10)
 
+    def extract_description_preview_text(self, text: str) -> str:
+        about_section = self._extract_named_section_text(
+            text,
+            ['about the job', 'about this job'],
+            ['job description', 'description', 'role description', 'qualifications', 'requirements', 'education', 'responsibilities', 'duties', 'benefits'],
+        )
+        if about_section:
+            return about_section
+        return self.extract_job_description_section(text)
+
+    def extract_about_job_onward_text(self, text: str) -> str:
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            normalized = line.strip().rstrip(':').lower()
+            if normalized in {'about the job', 'about this job'}:
+                return '\n'.join(lines[index:]).strip()
+        return self.extract_description_preview_text(text)
+
+    def extract_job_description_section(self, text: str) -> str:
+        section = self._extract_named_section_text(
+            text,
+            ['job description', 'description', 'role description'],
+            ['qualifications', 'requirements', 'education', 'responsibilities', 'duties', 'benefits'],
+        )
+        return section or text.strip()
+
     def extract_education_requirements(self, text: str) -> list[str]:
         keywords = ['education', 'degree', 'bachelor', 'master', 'phd', 'diploma']
         lines = []
@@ -312,6 +339,56 @@ class JobDescriptionParser:
                 if items:
                     break
         return list(dict.fromkeys(items))[:limit]
+
+    def _extract_named_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
+        lines = text.splitlines()
+        start_index = None
+        for index, line in enumerate(lines):
+            normalized = line.strip().rstrip(':').lower()
+            if any(normalized == name for name in section_names):
+                start_index = index + 1
+                break
+            for name in section_names:
+                prefix = f'{name}:'
+                if normalized.startswith(prefix):
+                    remainder = line.strip()[len(prefix):].strip()
+                    remaining_lines = [remainder] if remainder else []
+                    remaining_lines.extend(lines[index + 1:])
+                    return self._collect_section_lines(remaining_lines, stop_names)
+
+        if start_index is None:
+            return ''
+        return self._collect_section_lines(lines[start_index:], stop_names)
+
+    def _collect_section_lines(self, lines: list[str], stop_names: list[str]) -> str:
+        collected = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                if collected:
+                    collected.append('')
+                continue
+
+            normalized = stripped.rstrip(':').lower()
+            if stop_names and any(normalized == name or normalized.startswith(f'{name}:') for name in stop_names):
+                break
+
+            collected.append(stripped)
+
+        return '\n'.join(collected).strip()
+
+    def _format_docx_paragraph(self, paragraph) -> str:
+        text = paragraph.text.strip()
+        if not text:
+            return ''
+        if self._is_bullet_paragraph(paragraph) and not re.match(r'^[•\-*]', text):
+            return f'• {text}'
+        return text
+
+    def _is_bullet_paragraph(self, paragraph) -> bool:
+        style_name = getattr(getattr(paragraph, 'style', None), 'name', '') or ''
+        lowered = style_name.lower()
+        return 'list bullet' in lowered or 'bullet' in lowered
 
     def _is_preferred_context(self, text: str, start: int, length: int) -> bool:
         window_start = max(0, start - 50)

@@ -113,6 +113,7 @@
 
     .job-card{
       height:100%;
+      max-height:100%;
       min-width:0;
       overflow:hidden;
       display:flex;
@@ -375,6 +376,26 @@
       line-height:1.6;
     }
 
+    .job-description-groups{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+    }
+
+    .job-description-group{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .job-description-heading{
+      margin:0;
+      color:#0f172a;
+      font-size:12px;
+      font-weight:700;
+      line-height:1.4;
+    }
+
     .job-list{
       margin:0;
       padding-left:18px;
@@ -388,11 +409,14 @@
     }
 
     .job-scroll-area{
-      flex:1 1 auto;
+      flex:1 1 0;
       min-height:0;
+      height:100%;
       overflow-y:auto;
       overflow-x:hidden;
       padding-right:4px;
+      padding-bottom:56px;
+      scroll-padding-bottom:56px;
       scrollbar-width:thin;
       scrollbar-color:rgba(30,115,216,0.55) rgba(220,233,251,0.7);
     }
@@ -414,14 +438,15 @@
 
     .job-raw-text{
       margin:0;
-      padding:12px;
-      border-radius:14px;
-      background:#f8fbff;
-      border:1px solid var(--line);
+      padding:0;
+      border:none;
+      background:transparent;
       color:var(--ink-soft);
       font-size:12px;
       line-height:1.55;
       white-space:pre-wrap;
+      overflow-wrap:anywhere;
+      font-family:inherit;
     }
 
     .job-empty{
@@ -537,7 +562,6 @@
             <div class="job-pills">
               {% if active_job.remote_option %}<span class="job-pill">Remote-friendly</span>{% endif %}
               {% if active_job.employment_type %}<span class="job-pill">{{ active_job.employment_type }}</span>{% endif %}
-              {% if active_job.experience_level %}<span class="job-pill">{{ active_job.experience_level }}</span>{% endif %}
             </div>
           {% endif %}
         </div>
@@ -557,64 +581,29 @@
                 <span class="job-meta-label">Employment Type</span>
                 <div class="job-meta-value">{{ active_job.employment_type|default:'Not detected' }}</div>
               </div>
-              <div class="job-meta-item">
-                <span class="job-meta-label">Experience Level</span>
-                <div class="job-meta-value">{{ active_job.experience_level|default:'Not detected' }}</div>
-              </div>
             </div>
 
-            <section class="job-section">
+            <section id="jobDescriptionSection" class="job-section">
               <div class="job-section-header">
-                <h3 class="section-title">Required Skills</h3>
+                <h3 class="section-title">Job Description</h3>
               </div>
-              {% if active_job.required_skills %}
-                <div class="skill-pills">
-                  {% for skill in active_job.required_skills %}
-                    <span class="skill-pill">{{ skill }}</span>
+              {% if active_job.description_preview_sections %}
+                <div class="job-description-groups">
+                  {% for section in active_job.description_preview_sections %}
+                    <div class="job-description-group">
+                      <p class="job-description-heading">{{ section.heading }}</p>
+                      {% if section.items %}
+                        <ul class="job-list">
+                          {% for item in section.items %}
+                            <li>{{ item }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    </div>
                   {% endfor %}
                 </div>
               {% else %}
-                <p class="job-empty">No structured required skills were extracted from the uploaded job description.</p>
-              {% endif %}
-            </section>
-
-            {% if active_job.responsibilities %}
-              <section class="job-section">
-                <div class="job-section-header">
-                  <h3 class="section-title">Responsibilities</h3>
-                </div>
-                <ul class="job-list">
-                  {% for item in active_job.responsibilities|slice:':6' %}
-                    <li>{{ item }}</li>
-                  {% endfor %}
-                </ul>
-              </section>
-            {% endif %}
-
-            {% if active_job.qualifications or active_job.education_requirements %}
-              <section class="job-section">
-                <div class="job-section-header">
-                  <h3 class="section-title">Qualifications</h3>
-                </div>
-                <ul class="job-list">
-                  {% for item in active_job.qualifications|slice:':4' %}
-                    <li>{{ item }}</li>
-                  {% endfor %}
-                  {% for item in active_job.education_requirements|slice:':3' %}
-                    <li>{{ item }}</li>
-                  {% endfor %}
-                </ul>
-              </section>
-            {% endif %}
-
-            <section class="job-section">
-              <div class="job-section-header">
-                <h3 class="section-title">Current Job Description</h3>
-              </div>
-              {% if active_job.raw_text %}
-                <p class="job-raw-text">{{ active_job.raw_text }}</p>
-              {% else %}
-                <p class="job-empty">The uploaded file exists, but no raw description text is available to preview.</p>
+                <p class="job-empty">The uploaded file exists, but no About the job section is available to preview.</p>
               {% endif %}
             </section>
           {% else %}
@@ -635,8 +624,7 @@
     const jobDescriptionTitle = document.getElementById('job-description-title');
     const jobPills = document.querySelector('.job-pills');
     const jobMeta = document.querySelector('.job-meta');
-    const requiredSkillsSection = document.querySelector('.job-section');
-    const jobSections = document.querySelectorAll('.job-section');
+    const descriptionSection = document.getElementById('jobDescriptionSection');
     const jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
 
     uploadBtn.addEventListener('click', function () {
@@ -681,15 +669,28 @@
       }
     }
 
-    function renderList(items) {
-      return items.map(function (item) {
-        return '<li>' + item + '</li>';
-      }).join('');
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
-    function renderSkills(skills) {
-      return skills.map(function (skill) {
-        return '<span class="skill-pill">' + skill + '</span>';
+    function renderDescriptionSections(sections) {
+      return sections.map(function (section) {
+        const items = Array.isArray(section.items) ? section.items : [];
+        const listMarkup = items.length
+          ? '<ul class="job-list">' + items.map(function (item) {
+              return '<li>' + escapeHtml(item) + '</li>';
+            }).join('') + '</ul>'
+          : '';
+
+        return '<div class="job-description-group">' +
+          '<p class="job-description-heading">' + escapeHtml(section.heading || 'Job Description:') + '</p>' +
+          listMarkup +
+        '</div>';
       }).join('');
     }
 
@@ -719,9 +720,6 @@
         if (selectedJob.employment_type) {
           pills.push('<span class="job-pill">' + selectedJob.employment_type + '</span>');
         }
-        if (selectedJob.experience_level) {
-          pills.push('<span class="job-pill">' + selectedJob.experience_level + '</span>');
-        }
         jobPills.innerHTML = pills.join('');
       }
 
@@ -729,29 +727,13 @@
         jobMeta.innerHTML = [
           '<div class="job-meta-item"><span class="job-meta-label">Company</span><div class="job-meta-value">' + (selectedJob.company || 'Not detected') + '</div></div>',
           '<div class="job-meta-item"><span class="job-meta-label">Location</span><div class="job-meta-value">' + (selectedJob.location || 'Not detected') + '</div></div>',
-          '<div class="job-meta-item"><span class="job-meta-label">Employment Type</span><div class="job-meta-value">' + (selectedJob.employment_type || 'Not detected') + '</div></div>',
-          '<div class="job-meta-item"><span class="job-meta-label">Experience Level</span><div class="job-meta-value">' + (selectedJob.experience_level || 'Not detected') + '</div></div>'
+          '<div class="job-meta-item"><span class="job-meta-label">Employment Type</span><div class="job-meta-value">' + (selectedJob.employment_type || 'Not detected') + '</div></div>'
         ].join('');
       }
 
-      if (jobSections.length >= 3) {
-        const skillsSection = jobSections[0];
-        const responsibilitiesSection = jobSections[1];
-        const qualificationsSection = jobSections[2];
-        const descriptionSection = jobSections[jobSections.length - 1];
-
-        skillsSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Required Skills</h3></div>' +
-          (selectedJob.required_skills.length ? '<div class="skill-pills">' + renderSkills(selectedJob.required_skills) + '</div>' : '<p class="job-empty">No structured required skills were extracted from the uploaded job description.</p>');
-
-        responsibilitiesSection.style.display = selectedJob.responsibilities.length ? '' : 'none';
-        responsibilitiesSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Responsibilities</h3></div><ul class="job-list">' + renderList(selectedJob.responsibilities.slice(0, 6)) + '</ul>';
-
-        const qualificationItems = selectedJob.qualifications.slice(0, 4).concat(selectedJob.education_requirements.slice(0, 3));
-        qualificationsSection.style.display = qualificationItems.length ? '' : 'none';
-        qualificationsSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Qualifications</h3></div><ul class="job-list">' + renderList(qualificationItems) + '</ul>';
-
-        descriptionSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Current Job Description</h3></div>' +
-          (selectedJob.raw_text ? '<p class="job-raw-text">' + selectedJob.raw_text + '</p>' : '<p class="job-empty">The uploaded file exists, but no raw description text is available to preview.</p>');
+      if (descriptionSection) {
+        descriptionSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Job Description</h3></div>' +
+          (selectedJob.description_preview_sections && selectedJob.description_preview_sections.length ? '<div class="job-description-groups">' + renderDescriptionSections(selectedJob.description_preview_sections) + '</div>' : '<p class="job-empty">The uploaded file exists, but no About the job section is available to preview.</p>');
       }
     }
 

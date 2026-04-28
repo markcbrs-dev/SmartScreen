@@ -15,7 +15,11 @@ def build_docx_file(name: str, paragraphs: list[str]) -> SimpleUploadedFile:
 	buffer = BytesIO()
 	document = Document()
 	for paragraph in paragraphs:
-		document.add_paragraph(paragraph)
+		if isinstance(paragraph, tuple):
+			text, style = paragraph
+			document.add_paragraph(text, style=style)
+		else:
+			document.add_paragraph(paragraph)
 	document.save(buffer)
 	buffer.seek(0)
 	return SimpleUploadedFile(
@@ -52,6 +56,61 @@ class ApplicantFlowTests(TestCase):
 		self.assertNotContains(response, 'Auto-match me to the best job')
 		self.assertContains(response, 'id="applicantLayout" class="layout layout-collapsed"', html=False)
 		self.assertContains(response, 'id="jobDescriptionCard" class="card job-card is-collapsed"', html=False)
+		self.assertNotContains(response, 'Experience Level')
+		self.assertNotContains(response, 'Required Skills')
+		self.assertNotContains(response, '<h3 class="section-title">Qualifications</h3>', html=False)
+		self.assertContains(response, 'Job Description')
+		self.assertNotContains(response, 'Current Job Description')
+
+	def test_apply_page_uses_about_the_job_text_for_job_description(self):
+		replace_active_job_description(build_text_file(
+			'faculty-role.txt',
+			'Job Title: Computer Science Faculty\n'
+			'Company: SmartScreen University\n'
+			'Location: Manila\n'
+			'About the job:\n'
+			'Teach undergraduate computing courses.\n'
+			'Guide student capstone projects.\n'
+			'Job Description:\n'
+			'Coordinate with faculty teams.\n',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'job_id': '',
+			},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'About the job:')
+		self.assertContains(response, 'Teach undergraduate computing courses.')
+		self.assertContains(response, 'Guide student capstone projects.')
+		self.assertContains(response, 'Job Description:')
+		self.assertContains(response, 'Coordinate with faculty teams.')
+		self.assertNotContains(response, '<h3 class="section-title">Responsibilities</h3>', html=False)
+		self.assertContains(response, '<li>Teach undergraduate computing courses.</li>', html=False)
+		self.assertContains(response, '<li>Guide student capstone projects.</li>', html=False)
+		self.assertContains(response, '<li>Coordinate with faculty teams.</li>', html=False)
+
+	def test_apply_page_keeps_about_the_job_bullets(self):
+		replace_active_job_description(build_docx_file(
+			'faculty-role.docx',
+			[
+				'Computer Science Faculty',
+				'Company: SmartScreen University',
+				'About the job',
+				('Teach undergraduate IT courses.', 'List Bullet'),
+				('Prepare lesson plans and assessments.', 'List Bullet'),
+			],
+		))
+
+		response = self.client.get(reverse('apply'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<p class="job-description-heading">About the job:</p>', html=False)
+		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
+		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
 
 	def test_apply_matches_selected_job_and_stores_resume_analysis(self):
 		job = replace_active_job_description(build_text_file(
@@ -118,6 +177,7 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Uploaded job description: Computer Science Professor.')
 		self.assertContains(response, 'View')
 		self.assertNotContains(response, 'Source:')
+		self.assertNotContains(response, 'Required Skills')
 
 	def test_dashboard_keeps_existing_job_cards_when_uploading_new_job(self):
 		self.client.post(
@@ -147,6 +207,66 @@ class JobUploadTests(TestCase):
 		self.assertEqual(JobDescription.objects.count(), 2)
 		self.assertContains(response, 'Computer Science Professor')
 		self.assertContains(response, 'Backend Engineer')
+
+	def test_dashboard_prefers_job_description_section_over_qualifications_block(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'faculty-role.txt',
+					'Job Title: Computer Science/IT Faculty\n'
+					'Company: FEU Institute of Technology\n'
+					'Qualifications:\n'
+					'Master\'s Degree in Computer Science or Information Technology\n'
+					'At least three (3) years of CS/IT work\n'
+					'Job Description:\n'
+					'Develop and deliver curriculum in Information Technology subjects.\n'
+					'Conduct lectures, labs, and seminars.\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Job Description')
+		self.assertContains(response, 'Develop and deliver curriculum in Information Technology subjects.')
+		self.assertContains(response, 'Conduct lectures, labs, and seminars.')
+		self.assertNotContains(response, 'Master\'s Degree in Computer Science or Information Technology')
+		self.assertContains(response, '<p class="db-job-description-heading">Job Description:</p>', html=False)
+		self.assertContains(response, '<li>Develop and deliver curriculum in Information Technology subjects.</li>', html=False)
+		self.assertContains(response, '<li>Conduct lectures, labs, and seminars.</li>', html=False)
+
+	def test_dashboard_preview_uses_about_the_job_section_and_keeps_docx_bullets(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_docx_file(
+					'faculty-role.docx',
+					[
+						'Computer Science/IT Faculty',
+						'Company: FEU Institute of Technology',
+						'Location: Manila',
+						'About the job',
+						('Teach undergraduate IT courses.', 'List Bullet'),
+						('Prepare lesson plans and assessments.', 'List Bullet'),
+						'Job Description:',
+						'Develop and deliver curriculum in Information Technology subjects.',
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Description Preview')
+		self.assertContains(response, '<p class="db-job-description-heading">About the job:</p>', html=False)
+		self.assertContains(response, 'Teach undergraduate IT courses.')
+		self.assertContains(response, 'Prepare lesson plans and assessments.')
+		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
+		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
+		self.assertNotContains(response, 'Company: FEU Institute of Technology')
 
 	def test_dashboard_refreshes_existing_applicant_match_scores(self):
 		replace_active_job_description(build_text_file(

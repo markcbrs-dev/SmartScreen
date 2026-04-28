@@ -10,8 +10,11 @@ import os
 from django.contrib.auth.decorators import login_required
 
 from .services import (
+    extract_about_job_onward_text,
     build_resume_profile_from_applicant,
+    extract_description_preview_text,
     evaluate_best_job_match,
+    extract_job_description_section,
     get_active_job_description,
     get_active_job_descriptions,
     get_job_description_by_id,
@@ -22,6 +25,41 @@ from .services import (
     serialize_match_result,
     update_applicant_from_resume_profile,
 )
+
+
+def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
+    sections: list[dict[str, object]] = []
+    current_section: dict[str, object] | None = None
+
+    for raw_line in (text or '').splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        normalized = line.rstrip(':').strip().lower()
+        if normalized in {'about the job', 'about this job', 'job description'}:
+            current_section = {
+                'heading': line if line.endswith(':') else f'{line}:',
+                'items': [],
+            }
+            sections.append(current_section)
+            continue
+
+        cleaned = line.removeprefix('•').strip()
+        cleaned = cleaned.removeprefix('-').strip()
+        if not cleaned:
+            continue
+
+        if current_section is None:
+            current_section = {
+                'heading': 'Job Description:',
+                'items': [],
+            }
+            sections.append(current_section)
+
+        current_section['items'].append(cleaned)
+
+    return sections
 
 def login_view(request):
     if request.method == 'POST':
@@ -121,6 +159,10 @@ def dashboard(request):
             return redirect_to_dashboard('jobs')
 
     jobs = get_active_job_descriptions()
+    for job in jobs:
+        job.description_text = extract_job_description_section(job.raw_text)
+        job.description_preview_text = extract_description_preview_text(job.raw_text)
+        job.description_preview_sections = _build_description_preview_sections(extract_about_job_onward_text(job.raw_text))
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
@@ -151,6 +193,9 @@ def audit_log_view(request):
 def apply(request):
     available_jobs = get_active_job_descriptions()
     active_job = available_jobs[0] if available_jobs else None
+    if active_job is not None:
+        active_job.description_preview_text = extract_about_job_onward_text(active_job.raw_text)
+        active_job.description_preview_sections = _build_description_preview_sections(active_job.description_preview_text)
     context = {
         'available_jobs': available_jobs,
         'active_job': active_job,
@@ -161,13 +206,10 @@ def apply(request):
                 'company': job.company,
                 'location': job.location,
                 'employment_type': job.employment_type,
-                'experience_level': job.experience_level,
                 'remote_option': job.remote_option,
-                'required_skills': list(job.required_skills or []),
                 'responsibilities': list(job.responsibilities or []),
-                'qualifications': list(job.qualifications or []),
-                'education_requirements': list(job.education_requirements or []),
-                'raw_text': job.raw_text or '',
+                'description_preview_text': extract_about_job_onward_text(job.raw_text),
+                'description_preview_sections': _build_description_preview_sections(extract_about_job_onward_text(job.raw_text)),
             }
             for job in available_jobs
         ],

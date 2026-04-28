@@ -234,12 +234,24 @@
           </form>
           </article>
 
+          <div class="db-jobs-stack">
+            {% if jobs %}
+            <div class="db-uploaded-jobs-header">
+              <div>
+                <h2 class="db-section-title">Uploaded Job Descriptions</h2>
+                <p class="db-section-copy">Review the parsed summary first, then open the full uploaded description when you need the complete text.</p>
+              </div>
+              <div class="db-uploaded-jobs-count">{{ jobs|length }} active</div>
+            </div>
+            {% endif %}
+
           <div class="db-jobs-grid db-jobs-grid-compact">
             {% for job in jobs %}
         <article class="db-table-card db-upload-card db-uploaded-job-card db-uploaded-job-card-compact">
           <div class="db-uploaded-job-preview">
             <div class="db-job-detail-head db-job-detail-head-card">
               <div class="db-job-detail-head-main">
+                <span class="db-job-kicker">Uploaded Job Description</span>
                 <h3 class="db-job-detail-name">{{ job.title }}</h3>
                 <p class="db-job-detail-subtitle">
                   {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
@@ -265,27 +277,33 @@
                 <span class="db-job-detail-meta-label">Employment Type</span>
                 <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
               </div>
-              <div class="db-job-detail-meta-item">
-                <span class="db-job-detail-meta-label">Experience Level</span>
-                <div class="db-job-detail-meta-value">{{ job.experience_level|default:'Not detected' }}</div>
-              </div>
             </div>
 
-            <section class="db-job-detail-section">
+            {% if job.raw_text %}
+            <section class="db-job-detail-section db-job-detail-section-compact">
               <div class="db-job-detail-section-header">
-                <h4 class="db-job-detail-section-title">Required Skills</h4>
+                <h4 class="db-job-detail-section-title">Description Preview</h4>
               </div>
-              {% if job.required_skills %}
-                <div class="db-job-detail-skill-pills">
-                  {% for skill in job.required_skills|slice:':8' %}
-                    <span class="db-job-detail-skill-pill">{{ skill }}</span>
+              {% if job.description_preview_sections %}
+                <div class="db-job-preview-text db-job-description-groups">
+                  {% for section in job.description_preview_sections %}
+                    <div class="db-job-description-group">
+                      <p class="db-job-description-heading">{{ section.heading }}</p>
+                      {% if section.items %}
+                        <ul class="db-job-detail-list">
+                          {% for item in section.items %}
+                            <li>{{ item }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    </div>
                   {% endfor %}
                 </div>
               {% else %}
-                <p class="db-job-detail-empty">No structured required skills were extracted from the uploaded job description.</p>
+                <pre class="db-job-preview-text">{{ job.description_preview_text|default:job.description_text|default:job.raw_text|truncatechars:260 }}</pre>
               {% endif %}
             </section>
-
+            {% endif %}
             <div class="db-card-actions db-card-actions-card">
               {% if job.raw_text %}
               <button
@@ -342,7 +360,6 @@
                     <div class="db-job-detail-pills">
                       {% if job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
                       {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
-                      {% if job.experience_level %}<span class="db-job-detail-pill">{{ job.experience_level }}</span>{% endif %}
                     </div>
                   </div>
 
@@ -359,27 +376,7 @@
                       <span class="db-job-detail-meta-label">Employment Type</span>
                       <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
                     </div>
-                    <div class="db-job-detail-meta-item">
-                      <span class="db-job-detail-meta-label">Experience Level</span>
-                      <div class="db-job-detail-meta-value">{{ job.experience_level|default:'Not detected' }}</div>
-                    </div>
                   </div>
-
-                  <section class="db-job-detail-section">
-                    <div class="db-job-detail-section-header">
-                      <h4 class="db-job-detail-section-title">Required Skills</h4>
-                    </div>
-                    {% if job.required_skills %}
-                      <div class="db-job-detail-skill-pills">
-                        {% for skill in job.required_skills %}
-                          <span class="db-job-detail-skill-pill">{{ skill }}</span>
-                        {% endfor %}
-                      </div>
-                    {% else %}
-                      <p class="db-job-detail-empty">No structured required skills were extracted from the uploaded job description.</p>
-                    {% endif %}
-                  </section>
-
                   {% if job.responsibilities %}
                   <section class="db-job-detail-section">
                     <div class="db-job-detail-section-header">
@@ -393,28 +390,35 @@
                   </section>
                   {% endif %}
 
-                  {% if job.qualifications or job.education_requirements %}
+                  {% if job.description_preview_sections %}
                   <section class="db-job-detail-section">
                     <div class="db-job-detail-section-header">
-                      <h4 class="db-job-detail-section-title">Qualifications</h4>
+                      <h4 class="db-job-detail-section-title">Job Description</h4>
                     </div>
-                    <ul class="db-job-detail-list">
-                      {% for item in job.qualifications|slice:':4' %}
-                        <li>{{ item }}</li>
+                    <div class="db-job-detail-raw-text db-job-description-groups">
+                      {% for section in job.description_preview_sections %}
+                        <div class="db-job-description-group">
+                          <p class="db-job-description-heading">{{ section.heading }}</p>
+                          {% if section.items %}
+                            <ul class="db-job-detail-list">
+                              {% for item in section.items %}
+                                <li>{{ item }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                        </div>
                       {% endfor %}
-                      {% for item in job.education_requirements|slice:':3' %}
-                        <li>{{ item }}</li>
-                      {% endfor %}
-                    </ul>
+                    </div>
+                  </section>
+                  {% elif job.description_text %}
+                  <section class="db-job-detail-section">
+                    <div class="db-job-detail-section-header">
+                      <h4 class="db-job-detail-section-title">Job Description</h4>
+                    </div>
+                    <pre class="db-job-detail-raw-text">{{ job.description_text }}</pre>
                   </section>
                   {% endif %}
 
-                  <section class="db-job-detail-section">
-                    <div class="db-job-detail-section-header">
-                      <h4 class="db-job-detail-section-title">Current Job Description</h4>
-                    </div>
-                    <p class="db-job-detail-raw-text">{{ job.raw_text }}</p>
-                  </section>
                 </div>
               </div>
             </dialog>
@@ -423,6 +427,7 @@
             {% empty %}
               <div class="db-table-card db-empty-state">No job description has been uploaded yet.</div>
             {% endfor %}
+          </div>
           </div>
       </section>
 

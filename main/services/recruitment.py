@@ -34,6 +34,18 @@ def parse_job_upload(file_obj) -> JobProfile:
     return get_job_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
+def extract_job_description_section(raw_text: str) -> str:
+    return get_job_parser().extract_job_description_section(raw_text or '')
+
+
+def extract_description_preview_text(raw_text: str) -> str:
+    return get_job_parser().extract_description_preview_text(raw_text or '')
+
+
+def extract_about_job_onward_text(raw_text: str) -> str:
+    return get_job_parser().extract_about_job_onward_text(raw_text or '')
+
+
 def get_active_job_description() -> JobDescription | None:
     return JobDescription.objects.order_by('-created_at', '-id').first()
 

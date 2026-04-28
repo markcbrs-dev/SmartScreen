@@ -2,6 +2,7 @@ import re
 from typing import Iterable, Optional
 
 from .entities import JobMatchResult, JobProfile, ResumeProfile
+from .spacy_job_classifier import get_job_title_classifier
 
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -48,6 +49,7 @@ class ResumeJobMatcher:
         keyword_score = self.calculate_keyword_similarity(resume.raw_text, job.raw_text)
         location_match = self.check_location_match(resume.locations, job.location)
         remote_match = self.check_remote_match(resume.raw_text, job.remote_option)
+        title_prediction_score = self.calculate_job_title_prediction_score(resume.raw_text, job.title)
 
         breakdown = {
             'skill_score': skill_score,
@@ -57,14 +59,26 @@ class ResumeJobMatcher:
             'location_score': 1.0 if location_match else 0.0,
             'remote_score': 1.0 if remote_match else 0.5,
         }
-        overall_score = (
-            breakdown['skill_score'] * 0.4
-            + breakdown['experience_score'] * 0.2
-            + breakdown['education_score'] * 0.15
-            + breakdown['keyword_score'] * 0.15
-            + breakdown['location_score'] * 0.05
-            + breakdown['remote_score'] * 0.05
-        )
+        if title_prediction_score is None:
+            overall_score = (
+                breakdown['skill_score'] * 0.4
+                + breakdown['experience_score'] * 0.2
+                + breakdown['education_score'] * 0.15
+                + breakdown['keyword_score'] * 0.15
+                + breakdown['location_score'] * 0.05
+                + breakdown['remote_score'] * 0.05
+            )
+        else:
+            breakdown['title_prediction_score'] = title_prediction_score
+            overall_score = (
+                breakdown['skill_score'] * 0.35
+                + breakdown['experience_score'] * 0.18
+                + breakdown['education_score'] * 0.12
+                + breakdown['keyword_score'] * 0.10
+                + breakdown['location_score'] * 0.05
+                + breakdown['remote_score'] * 0.05
+                + breakdown['title_prediction_score'] * 0.15
+            )
 
         return JobMatchResult(
             overall_score=max(0.0, min(1.0, overall_score)),
@@ -143,6 +157,15 @@ class ResumeJobMatcher:
             return True
         text = resume_text.lower()
         return any(token in text for token in ('remote', 'work from home', 'hybrid', 'distributed'))
+
+    def calculate_job_title_prediction_score(self, resume_text: str, job_title: Optional[str]) -> Optional[float]:
+        if not resume_text.strip() or not job_title:
+            return None
+        classifier = get_job_title_classifier()
+        score = classifier.score_label(resume_text, job_title)
+        if score is None:
+            return None
+        return max(0.0, min(1.0, float(score)))
 
     def normalize_skills(self, skills: Iterable[str]) -> list[str]:
         normalized = []
