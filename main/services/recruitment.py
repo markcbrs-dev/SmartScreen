@@ -34,6 +34,10 @@ def parse_job_upload(file_obj) -> JobProfile:
     return get_job_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
+def extract_job_display_text(file_obj, filename: str | None = None) -> str:
+    return get_job_parser().extract_display_text(file_obj, filename=filename or getattr(file_obj, 'name', None))
+
+
 def extract_job_description_section(raw_text: str) -> str:
     return get_job_parser().extract_job_description_section(raw_text or '')
 

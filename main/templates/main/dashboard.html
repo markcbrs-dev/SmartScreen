@@ -284,23 +284,29 @@
               <div class="db-job-detail-section-header">
                 <h4 class="db-job-detail-section-title">Description Preview</h4>
               </div>
-              {% if job.description_preview_sections %}
+              {% if job.description_preview_excerpt_sections %}
                 <div class="db-job-preview-text db-job-description-groups">
-                  {% for section in job.description_preview_sections %}
+                  {% for section in job.description_preview_excerpt_sections %}
                     <div class="db-job-description-group">
-                      <p class="db-job-description-heading">{{ section.heading }}</p>
-                      {% if section.items %}
-                        <ul class="db-job-detail-list">
-                          {% for item in section.items %}
-                            <li>{{ item }}</li>
-                          {% endfor %}
-                        </ul>
+                      <p class="db-job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% if section.blocks %}
+                        {% for block in section.blocks %}
+                          {% if block.type == 'list' %}
+                            <ul class="db-job-detail-list">
+                              {% for item in block.items_html %}
+                                <li>{{ item|safe }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% else %}
+                            <p class="db-job-description-copy">{{ block.html|safe }}</p>
+                          {% endif %}
+                        {% endfor %}
                       {% endif %}
                     </div>
                   {% endfor %}
                 </div>
               {% else %}
-                <pre class="db-job-preview-text">{{ job.description_preview_text|default:job.description_text|default:job.raw_text|truncatechars:260 }}</pre>
+                <pre class="db-job-preview-text">{{ job.description_preview_text|default:job.description_text|default:job.raw_text|truncatechars:250 }}</pre>
               {% endif %}
             </section>
             {% endif %}
@@ -398,13 +404,19 @@
                     <div class="db-job-detail-raw-text db-job-description-groups">
                       {% for section in job.description_preview_sections %}
                         <div class="db-job-description-group">
-                          <p class="db-job-description-heading">{{ section.heading }}</p>
-                          {% if section.items %}
-                            <ul class="db-job-detail-list">
-                              {% for item in section.items %}
-                                <li>{{ item }}</li>
-                              {% endfor %}
-                            </ul>
+                          <p class="db-job-description-heading">{{ section.heading_html|safe }}</p>
+                          {% if section.blocks %}
+                            {% for block in section.blocks %}
+                              {% if block.type == 'list' %}
+                                <ul class="db-job-detail-list">
+                                  {% for item in block.items_html %}
+                                    <li>{{ item|safe }}</li>
+                                  {% endfor %}
+                                </ul>
+                              {% else %}
+                                <p class="db-job-description-copy">{{ block.html|safe }}</p>
+                              {% endif %}
+                            {% endfor %}
                           {% endif %}
                         </div>
                       {% endfor %}

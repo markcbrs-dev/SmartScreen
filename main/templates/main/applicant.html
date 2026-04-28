@@ -388,6 +388,13 @@
       gap:8px;
     }
 
+    .job-description-copy{
+      margin:0;
+      color:var(--ink-soft);
+      font-size:12px;
+      line-height:1.55;
+    }
+
     .job-description-heading{
       margin:0;
       color:#0f172a;
@@ -406,6 +413,12 @@
 
     .job-list li + li{
       margin-top:6px;
+    }
+
+    .job-list + .job-description-copy,
+    .job-description-copy + .job-list,
+    .job-description-copy + .job-description-copy{
+      margin-top:8px;
     }
 
     .job-scroll-area{
@@ -591,13 +604,19 @@
                 <div class="job-description-groups">
                   {% for section in active_job.description_preview_sections %}
                     <div class="job-description-group">
-                      <p class="job-description-heading">{{ section.heading }}</p>
-                      {% if section.items %}
-                        <ul class="job-list">
-                          {% for item in section.items %}
-                            <li>{{ item }}</li>
-                          {% endfor %}
-                        </ul>
+                      <p class="job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% if section.blocks %}
+                        {% for block in section.blocks %}
+                          {% if block.type == 'list' %}
+                            <ul class="job-list">
+                              {% for item in block.items_html %}
+                                <li>{{ item|safe }}</li>
+                              {% endfor %}
+                            </ul>
+                          {% else %}
+                            <p class="job-description-copy">{{ block.html|safe }}</p>
+                          {% endif %}
+                        {% endfor %}
                       {% endif %}
                     </div>
                   {% endfor %}
@@ -680,16 +699,23 @@
 
     function renderDescriptionSections(sections) {
       return sections.map(function (section) {
-        const items = Array.isArray(section.items) ? section.items : [];
-        const listMarkup = items.length
-          ? '<ul class="job-list">' + items.map(function (item) {
-              return '<li>' + escapeHtml(item) + '</li>';
-            }).join('') + '</ul>'
-          : '';
+        const blocks = Array.isArray(section.blocks) ? section.blocks : [];
+        const blocksMarkup = blocks.map(function (block) {
+          if (block.type === 'list') {
+            const items = Array.isArray(block.items_html) ? block.items_html : [];
+            return items.length
+              ? '<ul class="job-list">' + items.map(function (item) {
+                  return '<li>' + item + '</li>';
+                }).join('') + '</ul>'
+              : '';
+          }
+
+          return block.html ? '<p class="job-description-copy">' + block.html + '</p>' : '';
+        }).join('');
 
         return '<div class="job-description-group">' +
-          '<p class="job-description-heading">' + escapeHtml(section.heading || 'Job Description:') + '</p>' +
-          listMarkup +
+          '<p class="job-description-heading">' + (section.heading_html || 'Job Description:') + '</p>' +
+          blocksMarkup +
         '</div>';
       }).join('');
     }

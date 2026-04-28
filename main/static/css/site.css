@@ -882,6 +882,13 @@ body { background-color: #f8fafc; color: #212529; }
   gap: 6px;
 }
 
+.db-job-description-copy {
+  margin: 0;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
 .db-job-description-heading {
   margin: 0;
   color: #0f172a;
@@ -1094,6 +1101,12 @@ body { background-color: #f8fafc; color: #212529; }
 
 .db-job-detail-list li + li {
   margin-top: 4px;
+}
+
+.db-job-detail-list + .db-job-description-copy,
+.db-job-description-copy + .db-job-detail-list,
+.db-job-description-copy + .db-job-description-copy {
+  margin-top: 6px;
 }
 
 .db-job-detail-raw-text,

@@ -5,6 +5,8 @@ from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.urls import reverse
+from html import escape
+import re
 from .models import Applicant, JobDescription
 import os
 from django.contrib.auth.decorators import login_required
@@ -13,6 +15,7 @@ from .services import (
     extract_about_job_onward_text,
     build_resume_profile_from_applicant,
     extract_description_preview_text,
+    extract_job_display_text,
     evaluate_best_job_match,
     extract_job_description_section,
     get_active_job_description,
@@ -27,6 +30,77 @@ from .services import (
 )
 
 
+def _normalize_description_line(line: str) -> str:
+    return re.sub(r'\*\*(.*?)\*\*', r'\1', line).strip().rstrip(':').lower()
+
+
+def _render_inline_formatting(text: str) -> str:
+    parts: list[str] = []
+    last_index = 0
+
+    for match in re.finditer(r'\*\*(.+?)\*\*', text):
+        parts.append(escape(text[last_index:match.start()]))
+        parts.append(f'<strong>{escape(match.group(1))}</strong>')
+        last_index = match.end()
+
+    parts.append(escape(text[last_index:]))
+    return ''.join(parts)
+
+
+def _visible_text_length(text: str) -> int:
+    return len(re.sub(r'\*\*', '', text))
+
+
+def _truncate_formatted_text(text: str, max_chars: int) -> str:
+    if _visible_text_length(text) <= max_chars:
+        return text
+
+    remaining = max_chars
+    parts: list[str] = []
+
+    for match in re.finditer(r'\*\*.+?\*\*|[^*]+|\*', text):
+        token = match.group(0)
+        if token.startswith('**') and token.endswith('**') and len(token) >= 4:
+            inner = token[2:-2]
+            inner_length = len(inner)
+            if inner_length <= remaining:
+                parts.append(token)
+                remaining -= inner_length
+                continue
+
+            if remaining > 0:
+                parts.append(f'**{inner[:remaining].rstrip()}**')
+            break
+
+        token_length = len(token)
+        if token_length <= remaining:
+            parts.append(token)
+            remaining -= token_length
+            continue
+
+        if remaining > 0:
+            parts.append(token[:remaining].rstrip())
+        break
+
+    truncated = ''.join(parts).rstrip()
+    return f'{truncated}...'
+
+
+def _append_section_block(section: dict[str, object], block_type: str, html: str) -> None:
+    if not html:
+        return
+
+    blocks = section['blocks']
+    if block_type == 'list':
+        if blocks and blocks[-1]['type'] == 'list':
+            blocks[-1]['items_html'].append(html)
+            return
+        blocks.append({'type': 'list', 'items_html': [html]})
+        return
+
+    blocks.append({'type': 'paragraph', 'html': html})
+
+
 def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
     sections: list[dict[str, object]] = []
     current_section: dict[str, object] | None = None
@@ -36,30 +110,51 @@ def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
         if not line:
             continue
 
-        normalized = line.rstrip(':').strip().lower()
+        normalized = _normalize_description_line(line)
         if normalized in {'about the job', 'about this job', 'job description'}:
             current_section = {
-                'heading': line if line.endswith(':') else f'{line}:',
-                'items': [],
+                'heading_html': _render_inline_formatting(line if line.endswith(':') else f'{line}:'),
+                'blocks': [],
             }
             sections.append(current_section)
             continue
 
-        cleaned = line.removeprefix('•').strip()
-        cleaned = cleaned.removeprefix('-').strip()
+        is_bullet = bool(re.match(r'^[•\-*]\s*', line))
+        cleaned = re.sub(r'^[•\-*]\s*', '', line).strip()
         if not cleaned:
             continue
 
         if current_section is None:
             current_section = {
-                'heading': 'Job Description:',
-                'items': [],
+                'heading_html': 'Job Description:',
+                'blocks': [],
             }
             sections.append(current_section)
 
-        current_section['items'].append(cleaned)
+        _append_section_block(current_section, 'list' if is_bullet else 'paragraph', _render_inline_formatting(cleaned))
 
     return sections
+
+
+def _build_dashboard_preview_sections(text: str, max_chars: int = 250) -> list[dict[str, object]]:
+    return _build_description_preview_sections(_truncate_formatted_text(text, max_chars))
+
+
+def _get_job_display_text(job: JobDescription) -> str:
+    description_file = getattr(job, 'description_file', None)
+    if not description_file:
+        return job.raw_text or ''
+
+    try:
+        description_file.open('rb')
+        return extract_job_display_text(description_file, filename=os.path.basename(description_file.name))
+    except (OSError, ValueError):
+        return job.raw_text or ''
+    finally:
+        try:
+            description_file.close()
+        except OSError:
+            pass
 
 def login_view(request):
     if request.method == 'POST':
@@ -160,9 +255,11 @@ def dashboard(request):
 
     jobs = get_active_job_descriptions()
     for job in jobs:
-        job.description_text = extract_job_description_section(job.raw_text)
-        job.description_preview_text = extract_description_preview_text(job.raw_text)
-        job.description_preview_sections = _build_description_preview_sections(extract_about_job_onward_text(job.raw_text))
+        job.display_text = _get_job_display_text(job)
+        job.description_text = extract_job_description_section(job.display_text)
+        job.description_preview_text = extract_description_preview_text(job.display_text)
+        job.description_preview_sections = _build_description_preview_sections(extract_about_job_onward_text(job.display_text))
+        job.description_preview_excerpt_sections = _build_dashboard_preview_sections(extract_about_job_onward_text(job.display_text))
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
@@ -194,7 +291,8 @@ def apply(request):
     available_jobs = get_active_job_descriptions()
     active_job = available_jobs[0] if available_jobs else None
     if active_job is not None:
-        active_job.description_preview_text = extract_about_job_onward_text(active_job.raw_text)
+        active_job.display_text = _get_job_display_text(active_job)
+        active_job.description_preview_text = extract_about_job_onward_text(active_job.display_text)
         active_job.description_preview_sections = _build_description_preview_sections(active_job.description_preview_text)
     context = {
         'available_jobs': available_jobs,
@@ -208,8 +306,8 @@ def apply(request):
                 'employment_type': job.employment_type,
                 'remote_option': job.remote_option,
                 'responsibilities': list(job.responsibilities or []),
-                'description_preview_text': extract_about_job_onward_text(job.raw_text),
-                'description_preview_sections': _build_description_preview_sections(extract_about_job_onward_text(job.raw_text)),
+                'description_preview_text': extract_about_job_onward_text(_get_job_display_text(job)),
+                'description_preview_sections': _build_description_preview_sections(extract_about_job_onward_text(_get_job_display_text(job))),
             }
             for job in available_jobs
         ],

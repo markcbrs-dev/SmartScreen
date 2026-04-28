@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import re
+from html import escape
 from typing import Optional
 
 from .entities import JobProfile
@@ -40,7 +41,7 @@ class JobDescriptionParser:
         raw_text = self.extract_text(file_obj, filename=filename)
         required_skills, preferred_skills = self.extract_skills(raw_text)
         return JobProfile(
-            title=self.extract_job_title(raw_text),
+            title=self.extract_job_title(raw_text, filename=filename),
             company=self.extract_company(raw_text),
             location=self.extract_location(raw_text),
             employment_type=self.extract_employment_type(raw_text),
@@ -64,6 +65,14 @@ class JobDescriptionParser:
             return self.extract_text_from_txt(file_obj)
         if ext == '.docx':
             return self.extract_text_from_docx(file_obj)
+        raise ValueError('Unsupported job description format. Please upload a TXT or DOCX file.')
+
+    def extract_display_text(self, file_obj, filename: Optional[str] = None) -> str:
+        ext = os.path.splitext(filename or getattr(file_obj, 'name', ''))[1].lower()
+        if ext == '.txt':
+            return self.extract_text_from_txt(file_obj)
+        if ext == '.docx':
+            return self.extract_display_text_from_docx(file_obj)
         raise ValueError('Unsupported job description format. Please upload a TXT or DOCX file.')
 
     def extract_text_from_docx(self, file_obj) -> str:
@@ -104,6 +113,44 @@ class JobDescriptionParser:
 
         return self._truncate_text('\n'.join(lines))
 
+    def extract_display_text_from_docx(self, file_obj) -> str:
+        if Document is None:
+            raise ValueError('DOCX support is not installed. Add python-docx to parse job descriptions.')
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+        try:
+            document = Document(file_obj)
+        except Exception as exc:
+            logger.exception('python-docx failed to extract formatted job description text.')
+            raise ValueError(f'Could not read the uploaded DOCX: {exc}') from exc
+
+        lines = []
+        for paragraph in document.paragraphs[:self.MAX_DOCX_PARAGRAPHS]:
+            formatted_paragraph = self._format_docx_display_paragraph(paragraph)
+            if formatted_paragraph:
+                lines.append(formatted_paragraph)
+            if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                break
+
+        if self._joined_length(lines) < self.MAX_TEXT_LENGTH:
+            row_count = 0
+            for table in document.tables:
+                for row in table.rows:
+                    row_count += 1
+                    if row_count > self.MAX_DOCX_TABLE_ROWS:
+                        break
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            lines.append(cell.text.strip())
+                        if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                            break
+                    if self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                        break
+                if row_count > self.MAX_DOCX_TABLE_ROWS or self._joined_length(lines) >= self.MAX_TEXT_LENGTH:
+                    break
+
+        return self._truncate_text('\n'.join(lines))
+
     def extract_text_from_txt(self, file_obj) -> str:
         if hasattr(file_obj, 'seek'):
             file_obj.seek(0)
@@ -117,7 +164,7 @@ class JobDescriptionParser:
             raise ValueError('Could not decode the uploaded text file.')
         return self._truncate_text(str(content))
 
-    def extract_job_title(self, text: str) -> Optional[str]:
+    def extract_job_title(self, text: str, filename: Optional[str] = None) -> Optional[str]:
         role_keywords = {
             'professor',
             'engineer',
@@ -130,6 +177,10 @@ class JobDescriptionParser:
             'designer',
             'administrator',
             'coordinator',
+            'instructor',
+            'teacher',
+            'lecturer',
+            'trainer',
         }
 
         patterns = [
@@ -149,6 +200,10 @@ class JobDescriptionParser:
                         (match.group(1) if match.lastindex else match.group(0)).strip(),
                         role_keywords,
                     )
+
+        filename_candidate = self._extract_title_from_filename(filename, role_keywords)
+        if filename_candidate:
+            return filename_candidate
 
         summary_match = re.search(
             r'\b(?:seeking|hiring|looking for)\b[^.\n]{0,80}?\b([A-Z][A-Za-z&/\- ]{2,80}\b(?:Professor|Engineer|Developer|Analyst|Manager|Specialist|Consultant|Scientist|Designer|Administrator|Coordinator))\b',
@@ -281,7 +336,7 @@ class JobDescriptionParser:
     def extract_about_job_onward_text(self, text: str) -> str:
         lines = text.splitlines()
         for index, line in enumerate(lines):
-            normalized = line.strip().rstrip(':').lower()
+            normalized = self._normalize_section_line(line)
             if normalized in {'about the job', 'about this job'}:
                 return '\n'.join(lines[index:]).strip()
         return self.extract_description_preview_text(text)
@@ -344,7 +399,7 @@ class JobDescriptionParser:
         lines = text.splitlines()
         start_index = None
         for index, line in enumerate(lines):
-            normalized = line.strip().rstrip(':').lower()
+            normalized = self._normalize_section_line(line)
             if any(normalized == name for name in section_names):
                 start_index = index + 1
                 break
@@ -369,7 +424,7 @@ class JobDescriptionParser:
                     collected.append('')
                 continue
 
-            normalized = stripped.rstrip(':').lower()
+            normalized = self._normalize_section_line(stripped)
             if stop_names and any(normalized == name or normalized.startswith(f'{name}:') for name in stop_names):
                 break
 
@@ -385,10 +440,33 @@ class JobDescriptionParser:
             return f'• {text}'
         return text
 
+    def _format_docx_display_paragraph(self, paragraph) -> str:
+        text = paragraph.text.strip()
+        if not text:
+            return ''
+
+        formatted_runs = []
+        for run in paragraph.runs:
+            run_text = run.text
+            if not run_text:
+                continue
+            if run.bold:
+                formatted_runs.append(f'**{run_text}**')
+            else:
+                formatted_runs.append(run_text)
+
+        formatted_text = ''.join(formatted_runs).strip() or text
+        if self._is_bullet_paragraph(paragraph) and not re.match(r'^[•\-*]', formatted_text.lstrip()):
+            return f'• {formatted_text}'
+        return formatted_text
+
     def _is_bullet_paragraph(self, paragraph) -> bool:
         style_name = getattr(getattr(paragraph, 'style', None), 'name', '') or ''
         lowered = style_name.lower()
         return 'list bullet' in lowered or 'bullet' in lowered
+
+    def _normalize_section_line(self, line: str) -> str:
+        return re.sub(r'\*\*(.*?)\*\*', r'\1', line).strip().rstrip(':').lower()
 
     def _is_preferred_context(self, text: str, start: int, length: int) -> bool:
         window_start = max(0, start - 50)
@@ -455,3 +533,22 @@ class JobDescriptionParser:
         while start < role_index and not words[start][:1].isupper():
             start += 1
         return ' '.join(words[start:role_index + 1]).strip(':- ')
+
+    def _extract_title_from_filename(self, filename: Optional[str], role_keywords: set[str]) -> Optional[str]:
+        if not filename:
+            return None
+
+        stem = os.path.splitext(os.path.basename(filename))[0]
+        candidate = re.sub(r'[_\-]+', ' ', stem).strip()
+        if not candidate:
+            return None
+
+        normalized_candidate = candidate.lower()
+        if normalized_candidate in {'uploaded job description', 'job description', 'new active role', 'new role'}:
+            return None
+
+        words = [word.strip('.,()').lower() for word in candidate.split()]
+        if not any(word in role_keywords for word in words):
+            return None
+
+        return self._normalize_title_candidate(candidate.title(), role_keywords)
