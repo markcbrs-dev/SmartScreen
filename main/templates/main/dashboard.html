@@ -116,8 +116,8 @@
           </div>
           <div class="col-12 col-sm-6 col-xl-3">
             <article class="db-stat-card">
-              <div class="db-stat-icon"><i class="bi bi-search-heart-fill"></i></div>
-              <div class="db-stat-label">Under Review</div>
+              <div class="db-stat-icon"><i class="bi bi-person-video3"></i></div>
+              <div class="db-stat-label">For Interview</div>
               <div class="db-stat-value">{{ reviewing_count }}</div>
             </article>
           </div>
@@ -288,15 +288,13 @@
                 <div class="db-job-preview-text db-job-description-groups">
                   {% for section in job.description_preview_excerpt_sections %}
                     <div class="db-job-description-group">
-                      <p class="db-job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% if section.heading_html %}<p class="db-job-description-heading">{{ section.heading_html|safe }}</p>{% endif %}
                       {% if section.blocks %}
                         {% for block in section.blocks %}
                           {% if block.type == 'list' %}
-                            <ul class="db-job-detail-list">
-                              {% for item in block.items_html %}
-                                <li>{{ item|safe }}</li>
-                              {% endfor %}
-                            </ul>
+                            {% for item in block.items_html %}
+                              <p class="db-job-description-copy">{{ item|safe }}</p>
+                            {% endfor %}
                           {% else %}
                             <p class="db-job-description-copy">{{ block.html|safe }}</p>
                           {% endif %}
@@ -383,19 +381,7 @@
                       <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
                     </div>
                   </div>
-                  {% if job.responsibilities %}
-                  <section class="db-job-detail-section">
-                    <div class="db-job-detail-section-header">
-                      <h4 class="db-job-detail-section-title">Responsibilities</h4>
-                    </div>
-                    <ul class="db-job-detail-list">
-                      {% for item in job.responsibilities|slice:':6' %}
-                        <li>{{ item }}</li>
-                      {% endfor %}
-                    </ul>
-                  </section>
-                  {% endif %}
-
+                  
                   {% if job.description_preview_sections %}
                   <section class="db-job-detail-section">
                     <div class="db-job-detail-section-header">
@@ -404,15 +390,13 @@
                     <div class="db-job-detail-raw-text db-job-description-groups">
                       {% for section in job.description_preview_sections %}
                         <div class="db-job-description-group">
-                          <p class="db-job-description-heading">{{ section.heading_html|safe }}</p>
+                          {% if section.heading_html %}<p class="db-job-description-heading">{{ section.heading_html|safe }}</p>{% endif %}
                           {% if section.blocks %}
                             {% for block in section.blocks %}
                               {% if block.type == 'list' %}
-                                <ul class="db-job-detail-list">
-                                  {% for item in block.items_html %}
-                                    <li>{{ item|safe }}</li>
-                                  {% endfor %}
-                                </ul>
+                                {% for item in block.items_html %}
+                                  <p class="db-job-description-copy">{{ item|safe }}</p>
+                                {% endfor %}
                               {% else %}
                                 <p class="db-job-description-copy">{{ block.html|safe }}</p>
                               {% endif %}

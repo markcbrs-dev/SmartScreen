@@ -238,7 +238,6 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Job Description')
 		self.assertContains(response, 'Develop and deliver curriculum in Information Technology subjects.')
 		self.assertContains(response, 'Conduct lectures, labs, and seminars.')
-		self.assertNotContains(response, 'Master\'s Degree in Computer Science or Information Technology')
 		self.assertContains(response, '<p class="db-job-description-heading">Job Description:</p>', html=False)
 		self.assertContains(response, '<p class="db-job-description-copy">Develop and deliver curriculum in Information Technology subjects.</p>', html=False)
 		self.assertContains(response, '<p class="db-job-description-copy">Conduct lectures, labs, and seminars.</p>', html=False)
@@ -270,9 +269,8 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, '<p class="db-job-description-heading">About the job:</p>', html=False)
 		self.assertContains(response, 'Teach undergraduate IT courses.')
 		self.assertContains(response, 'Prepare lesson plans and assessments.')
-		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
-		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
-		self.assertNotContains(response, 'Company: FEU Institute of Technology')
+		self.assertContains(response, '<p class="db-job-description-copy">Teach undergraduate IT courses.</p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy">Prepare lesson plans and assessments.</p>', html=False)
 
 	def test_dashboard_preserves_docx_bold_text_in_description_preview(self):
 		response = self.client.post(
@@ -292,7 +290,54 @@ class JobUploadTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, '<li>Teach <strong>Python</strong> and AI courses.</li>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy">Teach <strong>Python</strong> and AI courses.</p>', html=False)
+
+	def test_dashboard_preserves_docx_bold_only_lines_in_description_preview(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_docx_file(
+					'Python Programming Instructor.docx',
+					[
+						'About the job',
+						{'runs': [('Responsibilities', True)]},
+						{'runs': [('Curriculum and Instruction Development', True)]},
+						('* Conduct classroom instruction and lesson planning aligned with the existing syllabus.', 'Normal'),
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<p class="db-job-description-heading"><strong>Responsibilities</strong>:</p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy"><strong>Curriculum and Instruction Development</strong></p>', html=False)
+
+	def test_dashboard_dialog_uses_about_the_job_section_with_formatting(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'faculty-role.txt',
+					'Job Title: Computer Science/IT Faculty\n'
+					'Overview:\n'
+					'- Support **laboratory** classes.\n'
+					'About the job:\n'
+					'- Teach **undergraduate** IT courses.\n'
+					'- Prepare lesson plans.\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertNotContains(response, '<p class="db-job-description-heading">Overview:</p>', html=False)
+		self.assertNotContains(response, 'Support <strong>laboratory</strong> classes.', html=False)
+		self.assertContains(response, '<p class="db-job-description-heading">About the job:</p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy">Teach <strong>undergraduate</strong> IT courses.</p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy">Prepare lesson plans.</p>', html=False)
 
 	def test_dashboard_prefers_filename_title_when_docx_body_contains_misleading_role_line(self):
 		response = self.client.post(

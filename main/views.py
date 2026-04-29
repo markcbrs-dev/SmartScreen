@@ -101,7 +101,26 @@ def _append_section_block(section: dict[str, object], block_type: str, html: str
     blocks.append({'type': 'paragraph', 'html': html})
 
 
-def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
+def _is_description_heading(line: str) -> bool:
+    normalized = _normalize_description_line(line)
+    if normalized in {
+        'about the job',
+        'about this job',
+        'job description',
+        'description',
+        'overview',
+        'responsibilities',
+        'duties',
+        'qualifications',
+        'requirements',
+        'benefits',
+        'education',
+    }:
+        return True
+    return line.endswith(':') and len(line) <= 120
+
+
+def _build_formatted_text_sections(text: str, default_heading: str | None = None) -> list[dict[str, object]]:
     sections: list[dict[str, object]] = []
     current_section: dict[str, object] | None = None
 
@@ -110,8 +129,7 @@ def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
         if not line:
             continue
 
-        normalized = _normalize_description_line(line)
-        if normalized in {'about the job', 'about this job', 'job description'}:
+        if _is_description_heading(line):
             current_section = {
                 'heading_html': _render_inline_formatting(line if line.endswith(':') else f'{line}:'),
                 'blocks': [],
@@ -119,14 +137,14 @@ def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
             sections.append(current_section)
             continue
 
-        is_bullet = bool(re.match(r'^[•\-*]\s*', line))
-        cleaned = re.sub(r'^[•\-*]\s*', '', line).strip()
+        is_bullet = bool(re.match(r'^(?:[•\-]\s+|\*\s+)', line))
+        cleaned = re.sub(r'^(?:[•\-]\s+|\*\s+)', '', line).strip()
         if not cleaned:
             continue
 
         if current_section is None:
             current_section = {
-                'heading_html': 'Job Description:',
+                'heading_html': _render_inline_formatting(default_heading) if default_heading else None,
                 'blocks': [],
             }
             sections.append(current_section)
@@ -134,6 +152,10 @@ def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
         _append_section_block(current_section, 'list' if is_bullet else 'paragraph', _render_inline_formatting(cleaned))
 
     return sections
+
+
+def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
+    return _build_formatted_text_sections(text, default_heading='Job Description:')
 
 
 def _build_dashboard_preview_sections(text: str, max_chars: int = 250) -> list[dict[str, object]]:
