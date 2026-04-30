@@ -150,3 +150,33 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertIn('title_prediction_score', result.breakdown)
         self.assertAlmostEqual(result.breakdown['title_prediction_score'], 0.8)
+
+    def test_matcher_uses_structured_entities_for_keyword_similarity_when_raw_text_is_sparse(self):
+        resume = ResumeProfile(
+            raw_text='miscellaneous text',
+            skills=['Python', 'TensorFlow'],
+            education=['Bachelor of Science'],
+            experience=['Built machine learning services'],
+        )
+        job = JobProfile(
+            title='AI Engineer',
+            raw_text='unrelated posting copy',
+            required_skills=['Python', 'TensorFlow'],
+            preferred_skills=['PyTorch'],
+            education_requirements=['Bachelor of Science'],
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertGreater(result.keyword_match_score, 0.0)
+        self.assertIn('Python', result.matching_skills)
+
+    def test_estimate_experience_level_uses_explicit_years(self):
+        matcher = ResumeJobMatcher()
+
+        self.assertEqual(matcher._estimate_experience_level(['Worked 1 year in support roles']), 1)
+        self.assertEqual(matcher._estimate_experience_level(['Accumulated 3 years of backend engineering']), 2)
+        self.assertEqual(matcher._estimate_experience_level(['Built systems for 5 years']), 3)
+        self.assertEqual(matcher._estimate_experience_level(['Led teams for 8 years']), 4)
+        self.assertEqual(matcher._estimate_experience_level(['Directed programs for 10 years']), 5)

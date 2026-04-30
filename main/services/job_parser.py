@@ -30,6 +30,7 @@ class JobDescriptionParser:
 
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
         self._nlp = None
+        self._nlp_load_failed = False
         self._nlp_model = nlp_model
         self.tech_skills = self._load_tech_skills()
         self.soft_skills = self._load_soft_skills()
@@ -223,7 +224,10 @@ class JobDescriptionParser:
         return None
 
     def extract_company(self, text: str) -> Optional[str]:
-        for pattern in [r'Company:\s*(.+)', r'Organization:\s*(.+)', r'About\s+(.+)']:
+        # Keep only specific header patterns; the broad 'About\s+(.+)' pattern
+        # was too greedy and would capture section titles like 'About the Role'
+        # as the company name.  NER handles the fallback reliably.
+        for pattern in [r'Company:\s*(.+)', r'Organization:\s*(.+)']:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 if len(match.strip()) > 2:
@@ -245,7 +249,9 @@ class JobDescriptionParser:
         nlp = self._get_nlp()
         if nlp is not None:
             doc = nlp(text[:1500])
-            locations = [entity.text.strip() for entity in doc.ents if entity.label_ == 'GPE']
+            # Include both GPE (cities, countries) and LOC (e.g. 'Metro Manila',
+            # 'Silicon Valley') so regional area names are not missed.
+            locations = [entity.text.strip() for entity in doc.ents if entity.label_ in {'GPE', 'LOC'}]
             if locations:
                 return ', '.join(dict.fromkeys(locations))
         return None
@@ -253,12 +259,13 @@ class JobDescriptionParser:
     def _get_nlp(self):
         if self._nlp is not None:
             return self._nlp
-        if spacy is None or not ENABLE_SPACY:
+        if self._nlp_load_failed or spacy is None or not ENABLE_SPACY:
             return None
         try:
             self._nlp = spacy.load(self._nlp_model)
         except OSError:
             logger.info('spaCy model %s is not installed; using regex-based job parsing.', self._nlp_model)
+            self._nlp_load_failed = True
             return None
         return self._nlp
 
@@ -492,12 +499,12 @@ class JobDescriptionParser:
         }
 
     def _load_employment_types(self) -> set[str]:
-        return {'full-time', 'part-time', 'contract', 'temporary', 'internship', 'hybrid', 'remote', 'onsite'
+        return {'full-time', 'part-time', 'contract', 'temporary', 'internship', 'hybrid', 'remote', 'onsite',
                 'freelance', 'permanent', 'seasonal', 'volunteer', 'commission'
         }
 
     def _load_experience_levels(self) -> set[str]:
-        return {'entry level', 'junior', 'mid level', 'senior', 'lead', 'principal', 'manager', 'director'
+        return {'entry level', 'junior', 'mid level', 'senior', 'lead', 'principal', 'manager', 'director',
                 'intern', 'trainee', 'associate', 'staff', 'vp', 'c-level'
         }
 

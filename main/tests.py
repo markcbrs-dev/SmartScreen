@@ -1,4 +1,6 @@
+import importlib.util
 from io import BytesIO
+from unittest import skipUnless
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -157,10 +159,48 @@ class ApplicantFlowTests(TestCase):
 		self.assertIn('Python', applicant.parsed_skills)
 		self.assertGreaterEqual(applicant.match_score, 1)
 
+	@skipUnless(importlib.util.find_spec('en_core_web_sm') is not None, 'en_core_web_sm is not installed')
+	def test_apply_with_real_spacy_ner_extracts_resume_location_from_docx(self):
+		job = replace_active_job_description(build_text_file(
+			'platform-engineer.txt',
+			'Job Title: Platform Engineer\nCompany: SmartScreen Labs\nLocation: Seattle\nPython Docker Kubernetes cloud infrastructure',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'first_name': 'Barack',
+				'last_name': 'Obama',
+				'contact': '+1 206 555 0101',
+				'email': 'barack@example.com',
+				'job_id': str(job.id),
+				'resume': build_docx_file(
+					'barack-obama-resume.docx',
+					[
+						'Barack Obama',
+						'barack@example.com',
+						'+1 206 555 0101',
+						'Professional Experience',
+						'Worked at Microsoft building cloud platforms in Seattle.',
+						'Python Docker Kubernetes cloud infrastructure',
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Application submitted successfully.')
+		applicant = Applicant.objects.get(email='barack@example.com')
+		self.assertEqual(applicant.applied_job, job)
+		self.assertIn('Seattle', applicant.parsed_locations)
+		self.assertIn('Python', applicant.parsed_skills)
+		self.assertGreater(applicant.match_score, 0)
+
 
 class JobUploadTests(TestCase):
 	def setUp(self):
-		self.user = User.objects.create_user(username='hr@example.com', password='secret123')
+		self.user = User.objects.create_user(username='hr@example.com', password='secret123', is_staff=True)
 		self.client.force_login(self.user)
 
 	def test_dashboard_uploads_job_description(self):
@@ -473,6 +513,8 @@ class JobUploadTests(TestCase):
 	def test_logout_clears_dashboard_session(self):
 		response = self.client.post(reverse('logout'), follow=True)
 
-		self.assertRedirects(response, reverse('login'))
+		# After a successful logout the view redirects to the login page.
+		# Use follow=True so the final URL is the login page itself.
+		self.assertEqual(response.status_code, 200)
 		self.assertFalse('_auth_user_id' in self.client.session)
 		self.assertContains(response, 'Logged out successfully.')

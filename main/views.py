@@ -9,7 +9,9 @@ from html import escape
 import re
 from .models import Applicant, JobDescription
 import os
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+_staff_required = user_passes_test(lambda u: u.is_active and u.is_staff, login_url='login')
 
 from .services import (
     extract_about_job_onward_text,
@@ -223,7 +225,7 @@ def hr_register(request):
 
     return render(request, 'main/hr_register.html')
 
-@login_required
+@_staff_required
 def logout_view(request):
     if request.method != 'POST':
         return redirect('dashboard')
@@ -231,7 +233,7 @@ def logout_view(request):
     messages.success(request, 'Logged out successfully.')
     return redirect('login')
 
-@login_required
+@_staff_required
 def dashboard(request):
     def redirect_to_dashboard(panel: str | None = None):
         url = reverse('dashboard')
@@ -303,7 +305,7 @@ def dashboard(request):
     return render(request, 'main/dashboard.html', context)
 
 # --- NEW VIEW FOR AUDIT LOG ---
-@login_required
+@_staff_required
 def audit_log_view(request):
     # This fetches the 50 most recent changes tracked by simple-history
     logs = Applicant.history.all().order_by('-history_date')[:50]

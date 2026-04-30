@@ -35,6 +35,7 @@ ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in
 class ResumeParser:
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
         self._nlp = None
+        self._nlp_load_failed = False
         self._nlp_model = nlp_model
         self.common_skills = self._load_common_skills()
 
@@ -157,15 +158,22 @@ class ResumeParser:
         full_name = None
         nlp = self._get_nlp()
         if nlp is not None and text.strip():
-            doc = nlp(text)
+            # Cap input to keep NER fast; name is always near the top,
+            # organisations and locations are collected throughout the cap.
+            doc = nlp(text[:6000])
             persons = []
             for entity in doc.ents:
+                entity_text = entity.text.strip()
+                if not entity_text:
+                    continue
                 if entity.label_ == 'ORG':
-                    organizations.append(entity.text)
-                elif entity.label_ == 'GPE':
-                    locations.append(entity.text)
+                    organizations.append(entity_text)
+                elif entity.label_ in {'GPE', 'LOC'}:
+                    locations.append(entity_text)
                 elif entity.label_ == 'PERSON':
-                    persons.append(entity.text)
+                    persons.append(entity_text)
+            # doc.ents is ordered by position, so the first valid PERSON
+            # is the one closest to the top of the resume — the applicant.
             full_name = next((person for person in persons if 1 < len(person.split()) < 5), None)
 
         if not full_name:
@@ -176,12 +184,13 @@ class ResumeParser:
     def _get_nlp(self):
         if self._nlp is not None:
             return self._nlp
-        if spacy is None or not ENABLE_SPACY:
+        if self._nlp_load_failed or spacy is None or not ENABLE_SPACY:
             return None
         try:
             self._nlp = spacy.load(self._nlp_model)
         except OSError:
             logger.info('spaCy model %s is not installed; using regex-based resume parsing.', self._nlp_model)
+            self._nlp_load_failed = True
             return None
         return self._nlp
 
@@ -216,11 +225,25 @@ class ResumeParser:
         return os.path.splitext(str(name))[1].lower()
 
     def _load_common_skills(self) -> list[str]:
+        # Keep in sync with _SKILL_VOCAB in matcher.py and tech_skills in job_parser.py.
         return [
+            # Languages
             'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'ruby', 'go', 'rust',
-            'html', 'css', 'react', 'angular', 'vue', 'node.js', 'django', 'flask',
-            'sql', 'mongodb', 'postgresql', 'mysql', 'aws', 'azure', 'gcp',
-            'docker', 'kubernetes', 'jenkins', 'git', 'linux', 'machine learning',
-            'deep learning', 'ai', 'data analysis', 'tableau', 'power bi', 'excel',
+            'kotlin', 'swift', 'php',
+            # Web / frontend
+            'html', 'css', 'react', 'angular', 'vue', 'node.js', 'express', 'flutter',
+            # Backend / frameworks
+            'django', 'flask', 'fastapi', 'graphql', 'rest api', 'microservices',
+            # Databases
+            'sql', 'mongodb', 'postgresql', 'mysql', 'redis', 'aws', 'azure', 'gcp',
+            # Cloud & DevOps
+            'docker', 'kubernetes', 'jenkins', 'terraform', 'git', 'linux',
+            # Data / AI
+            'machine learning', 'deep learning', 'ai', 'data science', 'data analysis',
+            'tableau', 'power bi', 'excel', 'pandas', 'numpy',
+            # Methodologies
             'agile', 'scrum', 'devops',
+            # Soft skills — keep in sync with _load_soft_skills in job_parser.py
+            'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
+            'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
         ]

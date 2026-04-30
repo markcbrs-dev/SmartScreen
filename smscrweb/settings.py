@@ -11,12 +11,19 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-+v$+vln0vp3!8^u7u0ddtnu4%h@vp9j3tyw+2$6ijff!g%#s!h'
+# Set the SECRET_KEY environment variable in production.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-+v$+vln0vp3!8^u7u0ddtnu4%h@vp9j3tyw+2$6ijff!g%#s!h',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Set DEBUG=False via environment variable in production.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+# Comma-separated list of allowed hosts, e.g. "example.com,www.example.com"
+_raw_hosts = os.environ.get('ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
 
 # Application definition
 

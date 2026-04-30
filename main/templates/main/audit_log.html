@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log — SmartScreen{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Applicant Audit Log</h1>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">← Back to Dashboard</a>
+  </div>
+
+  <p class="text-muted">Showing the 50 most recent changes to applicant records.</p>
+
+  {% if logs %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Date &amp; Time</th>
+          <th>Changed By</th>
+          <th>Change Type</th>
+          <th>Applicant</th>
+          <th>Status</th>
+          <th>Match Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.history_date|date:"Y-m-d H:i:s" }}</td>
+          <td>
+            {% if log.history_user %}
+              {{ log.history_user.get_full_name|default:log.history_user.username }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if log.history_type == "+" %}
+              <span class="badge bg-success">Created</span>
+            {% elif log.history_type == "~" %}
+              <span class="badge bg-primary">Updated</span>
+            {% elif log.history_type == "-" %}
+              <span class="badge bg-danger">Deleted</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ log.history_type }}</span>
+            {% endif %}
+          </td>
+          <td>{{ log.first_name }} {{ log.last_name }}</td>
+          <td>{{ log.status }}</td>
+          <td>
+            {% if log.match_score is not None %}
+              {{ log.match_score|floatformat:1 }}%
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No audit log entries found.</div>
+  {% endif %}
+</div>
+{% endblock %}

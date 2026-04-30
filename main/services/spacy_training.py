@@ -316,8 +316,9 @@ def train_textcat_model(
             'model': {
                 '@architectures': 'spacy.TextCatBOW.v3',
                 'exclusive_classes': True,
-                'length': 65536,
-                'ngram_size': 1,
+                'length': 262144,   # larger hash to avoid collisions with bigrams
+                'ngram_size': 2,    # unigrams + bigrams; critical for terms like
+                                    # "machine learning", "full stack", "data science"
                 'no_output_layer': False,
             }
         },
