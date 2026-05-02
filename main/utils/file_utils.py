@@ -1,3 +1,17 @@
+"""
+main/utils/file_utils.py — File extraction helpers (standalone, not used by main app views).
+
+HOW TO MODIFY
+-------------
+  Change PDF extraction  → edit _read_pdf_from_fileobj() (uses PyPDF2)
+  Change DOCX extraction → edit _read_docx_from_fileobj() (uses python-docx)
+  Add a new file format  → add a branch to extract_text_from_resume()
+
+NOTE: The main app uses ResumeParser (services/resume_parser.py) for production resume
+parsing, which uses pdfplumber as primary. This file is a simpler standalone utility
+and is not called by any view or service in the current codebase.
+"""
+
 import os
 import logging
 from typing import IO, Optional

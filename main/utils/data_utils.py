@@ -1,3 +1,16 @@
+"""
+main/utils/data_utils.py — CSV and data import helpers.
+
+HOW TO MODIFY
+-------------
+  Import a CSV into SQLite  → use import_csv_to_sqlite(csv_path, sqlite_path, table_name)
+  Import a CSV into a model → use import_csv_to_model(csv_path, model=MyModel, mapping={...})
+  Change batch size         → adjust the batch_size parameter (default 500)
+
+NOTE: These utilities are not called by any view. They are standalone helpers
+intended for data setup / migration scripts or the Django shell.
+"""
+
 import logging
 from typing import Optional, Type, Dict
 

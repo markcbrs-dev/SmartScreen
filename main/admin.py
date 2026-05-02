@@ -1,9 +1,27 @@
+"""
+main/admin.py — Django admin configuration for SmartScreen models.
+
+HOW TO MODIFY
+-------------
+  Add a field to admin list view   → add the field name to list_display in the
+                                      relevant ModelAdmin class.
+  Add a bulk action                → define a function decorated with @admin.action,
+                                      then add it to the `actions` list on the admin class.
+  Register a new model             → add @admin.register(MyModel) with a ModelAdmin class.
+  Change HR approval behaviour     → edit approve_hr / deny_hr action functions.
+  Change who appears under HR Users→ edit get_queryset() in CustomHRUserAdmin
+                                      (currently: is_staff=True, is_superuser=False).
+  Change history display           → classes using SimpleHistoryAdmin show a history tab.
+
+NOTE: The default User admin is unregistered and replaced by AdminUser + HRUser proxy admins.
+"""
+
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin
 from django.urls import reverse
 from django.utils.html import format_html
-from simple_history.admin import SimpleHistoryAdmin 
+from simple_history.admin import SimpleHistoryAdmin
 from .models import (
     Resume, Details, Applicant, JobDescription,
     AdminUser, HRUser, HRActivityLog 

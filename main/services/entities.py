@@ -1,3 +1,24 @@
+"""
+main/services/entities.py — Pure data containers (dataclasses) used across the services layer.
+
+HOW TO MODIFY
+-------------
+  Add a new parsed field to resumes     → add a field to ResumeProfile, then update:
+                                            - ResumeParser.parse() in resume_parser.py
+                                            - update_applicant_from_resume_profile() in recruitment.py
+                                            - build_resume_profile_from_applicant() in recruitment.py
+  Add a new parsed field to jobs        → add a field to JobProfile, then update:
+                                            - JobDescriptionParser.parse() in job_parser.py
+                                            - update_job_from_profile() in recruitment.py
+                                            - build_job_profile_from_model() in recruitment.py
+  Add a new match score component       → add a field to JobMatchResult, compute it in
+                                            matcher.py ResumeJobMatcher.match_resume_to_job(),
+                                            and add it to the breakdown dict.
+
+NOTE: These are plain Python dataclasses with no Django dependencies.
+      No database access happens here.
+"""
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 

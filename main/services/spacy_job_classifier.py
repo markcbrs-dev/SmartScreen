@@ -1,3 +1,36 @@
+"""
+main/services/spacy_job_classifier.py — Loads and queries the trained spaCy
+textcat model for job-title prediction scores.
+
+OVERVIEW
+--------
+JobTitleClassifier wraps the trained spaCy textcat model stored in
+`models/spacy_job_classifier/` (or the path in SMARTSCREEN_TEXTCAT_MODEL_DIR).
+The singleton `get_job_title_classifier()` is called by matcher.py to get
+a confidence score for the resume's predicted job title.
+
+HOW TO MODIFY
+-------------
+  Change model directory    → set env var SMARTSCREEN_TEXTCAT_MODEL_DIR to the new path,
+                               or change DEFAULT_MODEL_SUBDIR below.
+  Retrain the model         → run: manage.py train_spacy_model
+                               (see main/management/commands/train_spacy_model.py)
+  Add a label alias         → edit LABEL_ALIASES in spacy_training.py (normalize_job_label)
+  Change how score_label works → edit score_label() — it normalises the label via
+                               normalize_job_label() before lookup.
+  Force a model reload      → call get_job_title_classifier.cache_clear() then
+                               get_job_title_classifier() again.
+
+DEBUG
+-----
+  Model not loading?        → check that `models/spacy_job_classifier/` exists and contains
+                               a valid spaCy model (run train_spacy_model first).
+  All scores return None?   → check that spacy is installed and model_dir exists.
+  Label not recognized?     → inspect get_labels(); check LABEL_ALIASES in spacy_training.py.
+  Classifier not being used?→ check that calculate_job_title_prediction_score() in matcher.py
+                               returns a non-None value (requires non-empty resume_text + title).
+"""
+
 import json
 import logging
 import os

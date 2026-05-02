@@ -55,6 +55,21 @@
           <span>Active Job Positions</span>
         </span>
       </button>
+      <button
+        type="button"
+        class="db-nav-link db-nav-button"
+        id="interviewToggle"
+        aria-controls="interviewSection"
+        aria-expanded="false"
+      >
+        <span class="db-nav-button-main">
+          <i class="bi bi-person-video3"></i>
+          <span>For Interview</span>
+        </span>
+        {% if interview_count %}
+          <span class="db-nav-badge">{{ interview_count }}</span>
+        {% endif %}
+      </button>
       <div class="db-nav-group">
         <button
           type="button"
@@ -193,11 +208,109 @@
                     {% else %}
                       <span class="text-muted">Unavailable</span>
                     {% endif %}
+                    {% if a.status == 'NEW' or a.status == 'REVIEWING' %}
+                      <form method="post" class="db-inline-form" style="margin-top:4px">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_applicant_status">
+                        <input type="hidden" name="applicant_id" value="{{ a.id }}">
+                        <input type="hidden" name="new_status" value="INTERVIEW">
+                        <input type="hidden" name="redirect_panel" value="dashboard">
+                        <button type="submit" class="db-btn-interview" title="Move this applicant to For Interview">
+                          <i class="bi bi-person-check-fill"></i> For Interview
+                        </button>
+                      </form>
+                    {% endif %}
                   </td>
                 </tr>
                 {% empty %}
                 <tr>
                   <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- FOR INTERVIEW PANEL -->
+      <section class="db-main-section" id="interviewSection" hidden>
+        <section class="db-table-card">
+          <div class="db-table-toolbar">
+            <div>
+              <h2 class="db-section-title">For Interview</h2>
+              <p class="db-section-copy">Applicants you have shortlisted for an interview. Use the Contact button to reach out via email.</p>
+            </div>
+            <div class="db-search-box">
+              <i class="bi bi-search"></i>
+              <input type="text" id="interviewSearchInput" placeholder="Search" class="db-search-input">
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table db-table mb-0" id="interviewTable">
+              <thead>
+                <tr>
+                  <th>Applicant</th>
+                  <th>Position</th>
+                  <th>Match</th>
+                  <th>Applied Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in interview_applicants %}
+                <tr>
+                  <td>
+                    <div class="db-applicant-cell">
+                      <div class="db-applicant-avatar">
+                        {{ a.first_name|slice:":1"|upper }}{{ a.last_name|slice:":1"|upper }}
+                      </div>
+                      <div>
+                        <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
+                        <div class="db-applicant-email">{{ a.email }}</div>
+                        <div class="db-applicant-meta">{{ a.contact_number }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="db-position-cell">
+                    <div class="db-position-title">{{ a.position|default:"—" }}</div>
+                  </td>
+                  <td class="db-match-cell">
+                    <div class="db-bar-bg">
+                      <div class="db-bar-fill" data-score="{{ a.match_score }}"></div>
+                    </div>
+                    <span class="db-match-pct">{{ a.match_score }}%</span>
+                  </td>
+                  <td>{{ a.created_at|date:"M j, Y" }}</td>
+                  <td class="db-actions-cell">
+                    {% if a.resume %}
+                      <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
+                    {% endif %}
+                    <!-- Opens the device mail client with a pre-filled interview invitation -->
+                    <a
+                      href="mailto:{{ a.email }}?subject=Interview%20Invitation%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20are%20pleased%20to%20invite%20you%20for%20an%20interview%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
+                      class="db-btn-contact"
+                      title="Send interview invitation to {{ a.email }}"
+                    >
+                      <i class="bi bi-envelope-fill"></i> Contact
+                    </a>
+                    <!-- Remove button: moves applicant back to Reviewing -->
+                    <form method="post" class="db-inline-form" style="margin-top:6px">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="update_applicant_status">
+                      <input type="hidden" name="applicant_id" value="{{ a.id }}">
+                      <input type="hidden" name="new_status" value="REVIEWING">
+                      <input type="hidden" name="redirect_panel" value="interview">
+                      <button type="submit" class="db-btn-remove" title="Remove from For Interview">
+                        <i class="bi bi-x-circle-fill"></i> Remove
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-4">No applicants have been moved to For Interview yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -440,22 +553,31 @@
   const settingsMenu = document.getElementById('settingsMenu');
   const dashboardSection = document.getElementById('dashboardSection');
   const activeJobsSection = document.getElementById('activeJobsSection');
+  const interviewSection = document.getElementById('interviewSection');
   const activeJobsToggle = document.getElementById('activeJobsToggle');
+  const interviewToggle = document.getElementById('interviewToggle');
   const dashboardLink = document.querySelector("a[href='{% url 'dashboard' %}']");
   const currentUrl = new URL(window.location.href);
 
+  // Controls which main content panel is visible.
+  // panel values: 'dashboard' | 'jobs' | 'interview'
+  // To add a new panel: add a new section element + sidebar button,
+  // then add a case here and wire the button's click listener below.
   function setDashboardPanel(panel) {
-    const showJobs = panel === 'jobs';
-    dashboardSection.hidden = showJobs;
-    activeJobsSection.hidden = !showJobs;
-    activeJobsToggle.setAttribute('aria-expanded', String(showJobs));
-    activeJobsToggle.classList.toggle('db-nav-active', showJobs);
-    dashboardLink.classList.toggle('db-nav-active', !showJobs);
+    dashboardSection.hidden  = panel !== 'dashboard';
+    activeJobsSection.hidden = panel !== 'jobs';
+    interviewSection.hidden  = panel !== 'interview';
 
-    if (showJobs) {
-      currentUrl.searchParams.set('panel', 'jobs');
-    } else {
+    activeJobsToggle.setAttribute('aria-expanded', String(panel === 'jobs'));
+    activeJobsToggle.classList.toggle('db-nav-active', panel === 'jobs');
+    interviewToggle.setAttribute('aria-expanded', String(panel === 'interview'));
+    interviewToggle.classList.toggle('db-nav-active', panel === 'interview');
+    dashboardLink.classList.toggle('db-nav-active', panel === 'dashboard');
+
+    if (panel === 'dashboard') {
       currentUrl.searchParams.delete('panel');
+    } else {
+      currentUrl.searchParams.set('panel', panel);
     }
 
     window.history.replaceState({}, '', currentUrl);
@@ -466,7 +588,9 @@
     bar.style.width = score + '%';
   });
 
-  setDashboardPanel(currentUrl.searchParams.get('panel') === 'jobs' ? 'jobs' : 'dashboard');
+  // Restore the active panel from the URL query string on page load
+  const initialPanel = currentUrl.searchParams.get('panel');
+  setDashboardPanel(['jobs', 'interview'].includes(initialPanel) ? initialPanel : 'dashboard');
 
   sidebarToggle.addEventListener('click', function () {
     const isOpen = sidebar.classList.toggle('db-sidebar-open');
@@ -500,9 +624,23 @@
     settingsToggle.classList.remove('db-nav-open');
   });
 
+  interviewToggle.addEventListener('click', function () {
+    setDashboardPanel('interview');
+    settingsMenu.hidden = true;
+    settingsToggle.setAttribute('aria-expanded', 'false');
+    settingsToggle.classList.remove('db-nav-open');
+  });
+
   document.getElementById('searchInput').addEventListener('input', function () {
     const val = this.value.toLowerCase();
     document.querySelectorAll('#applicantsTable tbody tr').forEach(function (row) {
+      row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    });
+  });
+
+  document.getElementById('interviewSearchInput').addEventListener('input', function () {
+    const val = this.value.toLowerCase();
+    document.querySelectorAll('#interviewTable tbody tr').forEach(function (row) {
       row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
     });
   });

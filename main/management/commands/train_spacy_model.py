@@ -1,3 +1,25 @@
+"""
+main/management/commands/train_spacy_model.py — Django management command to train
+the spaCy textcat model used for job-title prediction scoring.
+
+USAGE
+-----
+  python manage.py train_spacy_model
+  python manage.py train_spacy_model --epochs 20 --dropout 0.3 --min-match-score 0.7
+
+HOW TO MODIFY
+-------------
+  Change default arguments  → edit the default= values in add_arguments().
+  Change output location    → use --output-dir or change the default path below.
+  Change training logic     → edit train_textcat_model() in services/spacy_training.py.
+  Change training data      → update resume_data.csv or job_dataset.csv/json.
+
+AFTER TRAINING
+--------------
+  The model is saved to models/spacy_job_classifier/ (or --output-dir).
+  Restart the Django process so the lru_cache in spacy_job_classifier.py reloads it.
+"""
+
 from pathlib import Path
 
 from django.conf import settings

@@ -1,3 +1,31 @@
+"""
+main/models.py — Database models for SmartScreen.
+
+OVERVIEW
+--------
+This file defines all database tables (models) used by the application.
+
+HOW TO MODIFY
+-------------
+- Add a new field       → add it to the relevant model class, then run:
+                          manage.py makemigrations && manage.py migrate
+- Change status options → edit Applicant.STATUS_CHOICES
+- Add a new model       → define it here, register in admin.py, make + run migrations
+- Change audit logging  → edit the @receiver functions or the Applicant/JobDescription.save()
+                          override (search "# Safety check" and "# Attribute the change")
+- Add history to a model → add `history = HistoricalRecords()` and migrate
+
+MODELS IN THIS FILE
+-------------------
+  HRActivityLog   — tracks login, logout, and page views for HR staff
+  Resume          — LEGACY / UNUSED; kept to avoid breaking migration history
+  Details         — LEGACY / UNUSED; detail lines for Resume
+  Applicant       — core applicant record (resume upload, parsed data, match score)
+  JobDescription  — uploaded job description with parsed structured fields
+  AdminUser       — proxy of User (superusers) for cleaner admin display
+  HRUser          — proxy of User (staff, non-superuser) for cleaner admin display
+"""
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.auth.signals import user_logged_in, user_logged_out
@@ -35,6 +63,12 @@ def log_logout(sender, request, user, **kwargs):
 
 # --- DATA MODELS ---
 
+# -----------------------------------------------------------------------
+# LEGACY MODELS — not used by any view or service.
+# Resume + Details were from the original prototype. They are kept here
+# only to preserve migration history (0001_initial.py depends on them).
+# Do NOT add business logic here. Safe to leave as-is.
+# -----------------------------------------------------------------------
 class Resume(models.Model):
     name = models.CharField(max_length=200)
 
@@ -52,6 +86,7 @@ class Details(models.Model):
 
 
 class Applicant(models.Model):
+    # MODIFY HERE: add or rename applicant pipeline stages
     STATUS_CHOICES = [
         ('NEW', 'New'),
         ('REVIEWING', 'Reviewing'),
@@ -68,13 +103,13 @@ class Applicant(models.Model):
     job_preference_locked = models.BooleanField(default=False)
     position = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
-    match_score = models.IntegerField(default=0)
-    resume_text = models.TextField(blank=True, default='')
-    parsed_skills = models.JSONField(default=list, blank=True)
-    parsed_education = models.JSONField(default=list, blank=True)
-    parsed_experience = models.JSONField(default=list, blank=True)
-    parsed_locations = models.JSONField(default=list, blank=True)
-    match_notes = models.JSONField(default=dict, blank=True)
+    match_score = models.IntegerField(default=0)  # 0–100; recalculated by recruitment.refresh_applicant_match
+    resume_text = models.TextField(blank=True, default='')   # raw extracted text from uploaded resume
+    parsed_skills = models.JSONField(default=list, blank=True)     # list[str] — populated by ResumeParser
+    parsed_education = models.JSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
+    parsed_experience = models.JSONField(default=list, blank=True) # list[str] — populated by ResumeParser
+    parsed_locations = models.JSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
+    match_notes = models.JSONField(default=dict, blank=True)  # full breakdown from JobMatchResult; see services/matcher.py
     created_at = models.DateTimeField(auto_now_add=True)
 
     history = HistoricalRecords()
@@ -101,6 +136,13 @@ class Applicant(models.Model):
         return f"{self.first_name} {self.last_name} <{self.email}>"
 
 
+# -----------------------------------------------------------------------
+# JobDescription — one row per uploaded job description file.
+# Parsed fields are populated by JobDescriptionParser (services/job_parser.py)
+# and saved via recruitment.replace_active_job_description().
+# To add a new structured field: add the model field here, add parsing logic
+# in job_parser.py, and update update_job_from_profile() in recruitment.py.
+# -----------------------------------------------------------------------
 class JobDescription(models.Model):
     title = models.CharField(max_length=200)
     description_file = models.FileField(upload_to='jobs/')

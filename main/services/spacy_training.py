@@ -1,3 +1,38 @@
+"""
+main/services/spacy_training.py — Training data loading and spaCy textcat model training.
+
+OVERVIEW
+--------
+This module is used exclusively by the `train_spacy_model` management command.
+It reads labeled training data from CSV/JSON files, trains a spaCy textcat
+model, and writes the artifact to disk.
+
+TRAINING DATA FILES (in SmartScreen/ root)
+------------------------------------------
+  resume_data.csv  — labeled resume rows; column `job_position_name` is the label.
+                      Only rows with `matched_score >= min_match_score` are used.
+  job_dataset.csv  — augmentation data; provides additional examples per job title.
+  job_dataset.json — augmentation data in JSON format.
+
+HOW TO MODIFY
+-------------
+  Add a new job label       → add rows with that label in resume_data.csv or job_dataset files.
+  Add a label alias         → add an entry to LABEL_ALIASES (e.g. variants of the same role).
+  Change training parameters→ pass different arguments to train_textcat_model(); defaults
+                               are set in train_spacy_model.py (the management command).
+  Change text columns used  → edit RESUME_TEXT_COLUMNS or JOB_TEXT_COLUMNS tuples.
+  Change min score filter   → pass a different min_match_score to train_textcat_model();
+                               default is 0.6 (set in the management command).
+  Change training epochs    → --epochs argument on manage.py train_spacy_model (default 12).
+
+DEBUG
+-----
+  Low accuracy?             → check label distribution in training data; add more examples
+                               or tune --epochs / --dropout / --min-match-score.
+  KeyError on label?        → check LABEL_ALIASES for unmapped variants.
+  Output model not loading? → ensure output_dir is correct and training completed without error.
+"""
+
 import ast
 import csv
 import json

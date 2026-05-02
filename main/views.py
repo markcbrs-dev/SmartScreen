@@ -1,3 +1,43 @@
+"""
+main/views.py — HTTP request handlers (views) for all app pages.
+
+OVERVIEW
+--------
+All user-facing and HR-facing page logic lives here.
+Views are wired to URLs in main/urls.py.
+
+HOW TO MODIFY
+-------------
+  Add a new page      → create a new view function here, add a URL pattern in urls.py,
+                        create a template in main/templates/main/.
+  Change form logic   → find the relevant view (apply, hr_register, login_view) and edit
+                        the POST branch.
+  Change dashboard    → edit the `dashboard` view; job upload/remove logic is in the
+                        `if action == ...` blocks.
+  Change text display → edit the private helpers (_build_formatted_text_sections,
+                        _build_dashboard_preview_sections, _truncate_formatted_text, etc.)
+                        These only affect how job description text is rendered in templates.
+  Add a new action    → add another `if action == '...'` branch inside dashboard's POST handler.
+  Change audit log    → edit `audit_log_view`; it queries Applicant.history (simple-history).
+  Change session      → login_view controls session expiry ('remember me' sets 2 weeks).
+
+VIEWS IN THIS FILE
+------------------
+  login_view      — HR login form (GET/POST)
+  hr_register     — HR self-registration; account starts inactive until admin approves
+  logout_view     — POST-only logout
+  dashboard       — HR dashboard: job upload/removal, applicant list with match scores
+  audit_log_view  — shows last 50 audit entries from Applicant change history
+  apply           — public applicant submission form (GET/POST)
+
+PRIVATE HELPERS (text rendering — not views)
+--------------------------------------------
+  _normalize_description_line, _render_inline_formatting, _visible_text_length,
+  _truncate_formatted_text, _append_section_block, _is_description_heading,
+  _build_formatted_text_sections, _build_description_preview_sections,
+  _build_dashboard_preview_sections, _get_job_display_text
+"""
+
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.contrib import messages
@@ -32,6 +72,12 @@ from .services import (
 )
 
 
+# -----------------------------------------------------------------------
+# PRIVATE TEXT-RENDERING HELPERS
+# These format job description text for HTML templates.
+# Modify these if you need to change how job descriptions are displayed
+# (e.g. bullet rendering, bold/markdown syntax, preview truncation).
+# -----------------------------------------------------------------------
 def _normalize_description_line(line: str) -> str:
     return re.sub(r'\*\*(.*?)\*\*', r'\1', line).strip().rstrip(':').lower()
 
@@ -180,6 +226,12 @@ def _get_job_display_text(job: JobDescription) -> str:
         except OSError:
             pass
 
+# -----------------------------------------------------------------------
+# AUTH VIEWS
+# DEBUG: check messages.error(request, ...) calls for form validation issues.
+# To change session duration, edit request.session.set_expiry() in login_view.
+# To change approval behaviour, see is_active=False in hr_register.
+# -----------------------------------------------------------------------
 def login_view(request):
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
@@ -233,6 +285,16 @@ def logout_view(request):
     messages.success(request, 'Logged out successfully.')
     return redirect('login')
 
+# -----------------------------------------------------------------------
+# DASHBOARD VIEW
+# Handles POST actions via `action` field in the form:
+#   'upload_job_description'    — validates + calls replace_active_job_description()
+#   'remove_job_description'    — calls remove_active_job_description()
+#   'update_applicant_status'   — sets applicant.status to the given value
+# GET: loads all jobs and applicants, refreshes match scores, renders dashboard.
+# DEBUG: check services/recruitment.py for replace_active_job_description and
+#        refresh_applicant_matches if scores are wrong or uploads fail.
+# -----------------------------------------------------------------------
 @_staff_required
 def dashboard(request):
     def redirect_to_dashboard(panel: str | None = None):
@@ -277,6 +339,27 @@ def dashboard(request):
                 messages.info(request, 'No uploaded job description to remove.')
             return redirect_to_dashboard('jobs')
 
+        # Move an applicant to a new status (e.g. NEW → INTERVIEW).
+        # The status value must be one of Applicant.STATUS_CHOICES.
+        # Redirects back to the panel specified by 'redirect_panel' (defaults to 'dashboard').
+        if action == 'update_applicant_status':
+            applicant_id = request.POST.get('applicant_id', '').strip()
+            new_status = request.POST.get('new_status', '').strip()
+            redirect_panel = request.POST.get('redirect_panel', 'dashboard').strip()
+            valid_statuses = {choice[0] for choice in Applicant.STATUS_CHOICES}
+            applicant = Applicant.objects.filter(id=applicant_id).first() if applicant_id else None
+            if applicant is None:
+                messages.error(request, 'Applicant not found.')
+            elif new_status not in valid_statuses:
+                messages.error(request, 'Invalid status value.')
+            else:
+                applicant._history_user = request.user
+                applicant.status = new_status
+                applicant.save(update_fields=['status'])
+                label = dict(Applicant.STATUS_CHOICES).get(new_status, new_status)
+                messages.success(request, f'{applicant.first_name} {applicant.last_name} moved to "{label}".')
+            return redirect_to_dashboard(redirect_panel)
+
     jobs = get_active_job_descriptions()
     for job in jobs:
         job.display_text = _get_job_display_text(job)
@@ -292,8 +375,11 @@ def dashboard(request):
     reviewing_count = sum(1 for applicant in applicants if applicant.status == 'REVIEWING')
     interview_count = sum(1 for applicant in applicants if applicant.status == 'INTERVIEW')
     offers_count = sum(1 for applicant in applicants if applicant.status == 'OFFER')
+    # Pre-filter interview applicants for the dedicated sidebar panel
+    interview_applicants = [a for a in applicants if a.status == 'INTERVIEW']
     context = {
         'applicants': applicants,
+        'interview_applicants': interview_applicants,
         'jobs': jobs,
         'active_job': active_job,
         'total': total,
@@ -304,13 +390,28 @@ def dashboard(request):
     }
     return render(request, 'main/dashboard.html', context)
 
-# --- NEW VIEW FOR AUDIT LOG ---
+# -----------------------------------------------------------------------
+# AUDIT LOG VIEW
+# Shows the 50 most recent changes to Applicant records tracked by
+# django-simple-history. Template: main/audit_log.html.
+# To show more records, change the [:50] slice below.
+# -----------------------------------------------------------------------
 @_staff_required
 def audit_log_view(request):
     # This fetches the 50 most recent changes tracked by simple-history
     logs = Applicant.history.all().order_by('-history_date')[:50]
     return render(request, 'main/audit_log.html', {'logs': logs})
 
+# -----------------------------------------------------------------------
+# APPLY VIEW (public applicant form)
+# GET:  renders the job list and description preview for applicants.
+# POST: validates fields + resume file, parses resume, creates Applicant,
+#       evaluates best job match, then saves the match result.
+# DEBUG: check services/resume_parser.py if parsing fails.
+#        Check services/matcher.py if match scores look wrong.
+#        Check services/recruitment.py evaluate_best_job_match for scoring logic.
+# To change allowed file types or max size, edit allowed_ext / max_size below.
+# -----------------------------------------------------------------------
 def apply(request):
     available_jobs = get_active_job_descriptions()
     active_job = available_jobs[0] if available_jobs else None

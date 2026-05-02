@@ -1,3 +1,42 @@
+"""
+main/services/resume_parser.py — Extracts structured data from uploaded resume files.
+
+OVERVIEW
+--------
+ResumeParser.parse() is the main entry point.
+It accepts a file-like object (PDF or DOCX) and returns a ResumeProfile dataclass.
+
+EXTRACTION PIPELINE
+-------------------
+  1. extract_text()      — reads raw text from PDF (pdfplumber → PyPDF2 fallback) or DOCX
+  2. extract_email()     — regex: finds first valid email address
+  3. extract_phone()     — regex: finds first valid phone number
+  4. extract_skills()    — keyword match against common_skills vocabulary
+  5. extract_education() — keyword-line heuristic (looks for university, degree, etc.)
+  6. extract_experience()— keyword-line heuristic (looks for engineer, manager, etc.)
+  7. extract_entities()  — spaCy NER (ORG, GPE, PERSON) if SMARTSCREEN_ENABLE_SPACY=1
+                           Falls back to _guess_name() from the first 8 lines.
+
+HOW TO MODIFY
+-------------
+  Add a new skill         → add it to _load_common_skills() list
+                            Keep in sync with _SKILL_VOCAB in matcher.py
+  Change education keywords → edit the `keywords` list in extract_education()
+  Change experience keywords→ edit the `keywords` list in extract_experience()
+  Enable spaCy NER        → set env var SMARTSCREEN_ENABLE_SPACY=1 and install en_core_web_sm
+  Change NLP model        → pass nlp_model='...' to ResumeParser() in recruitment.py
+  Change PDF extraction   → edit _extract_text_from_pdf() (primary: pdfplumber, fallback: PyPDF2)
+  Change DOCX extraction  → edit _extract_text_from_docx()
+  Increase name-guessing  → edit _guess_name() (currently scans first 8 lines)
+
+DEBUG
+-----
+  No text extracted?    → check that pdfplumber and PyPDF2 are installed; check resume file format
+  Skills always empty?  → check _load_common_skills() and that resume has recognisable keywords
+  Name always None?     → check _guess_name(); resume may not have the name on a clean first line
+  spaCy not running?    → check SMARTSCREEN_ENABLE_SPACY env var and en_core_web_sm installation
+"""
+
 import importlib
 import logging
 import os
@@ -34,10 +73,10 @@ ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in
 
 class ResumeParser:
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
-        self._nlp = None
-        self._nlp_load_failed = False
-        self._nlp_model = nlp_model
-        self.common_skills = self._load_common_skills()
+        self._nlp = None               # Lazy-loaded spaCy model; only loaded when ENABLE_SPACY=1
+        self._nlp_load_failed = False  # Flag to avoid retrying a failed load on every call
+        self._nlp_model = nlp_model    # Change the NER model by passing a different name here
+        self.common_skills = self._load_common_skills()  # Modify _load_common_skills() to add/remove skill keywords
 
     def parse(self, file_obj, filename: Optional[str] = None) -> ResumeProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
@@ -63,6 +102,7 @@ class ResumeParser:
             file_obj.seek(0)
 
         text = ''
+        # Primary extraction: pdfplumber handles multi-column and complex layouts better
         if pdfplumber is not None:
             try:
                 with pdfplumber.open(file_obj) as pdf:
@@ -74,11 +114,13 @@ class ResumeParser:
                 logger.exception('pdfplumber failed to extract resume text.')
                 text = ''
 
+        # Fallback to PyPDF2 if pdfplumber returned less than 100 characters
+        # (e.g. scanned/image-based PDF where pdfplumber finds no text)
         if len(text.strip()) < 100:
             if PdfReader is None:
                 raise ValueError('PDF support is not installed. Add PyPDF2 to parse resume uploads.')
             if hasattr(file_obj, 'seek'):
-                file_obj.seek(0)
+                file_obj.seek(0)  # Rewind so PyPDF2 reads from the beginning
             try:
                 reader = PdfReader(file_obj)
                 pages = []
@@ -117,6 +159,8 @@ class ResumeParser:
         return matches[0] if matches else None
 
     def extract_phone(self, text: str) -> Optional[str]:
+        # Two patterns: international format (+63 ...) and North American (XXX-XXX-XXXX)
+        # Add a new pattern to the list if phone numbers in your locale aren't being detected
         patterns = [
             r'\+?\d[\d\s().-]{8,}\d',
             r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',
@@ -124,8 +168,8 @@ class ResumeParser:
         for pattern in patterns:
             matches = re.findall(pattern, text)
             for match in matches:
-                digits = re.sub(r'\D', '', match)
-                if len(digits) >= 10:
+                digits = re.sub(r'\D', '', match)  # Strip non-digits to count actual digit length
+                if len(digits) >= 10:              # Require at least 10 digits to avoid false positives
                     return match.strip()
         return None
 
@@ -133,23 +177,28 @@ class ResumeParser:
         text_lower = text.lower()
         skills = []
         for skill in self.common_skills:
+            # \b ensures we match whole words only (e.g. 'go' won't match 'django')
             pattern = r'\b' + re.escape(skill) + r'\b'
             if re.search(pattern, text_lower):
                 skills.append(skill.title())
-        return sorted(set(skills))
+        return sorted(set(skills))  # Deduplicate and sort alphabetically
 
     def extract_education(self, text: str) -> list[str]:
+        # Add or remove keywords here to control which lines are captured as education entries
         keywords = [
             'university', 'college', 'institute', 'school', 'academy',
             'bachelor', 'master', 'phd', 'mba', 'degree', 'diploma', 'certification',
         ]
+        # limit=5: returns up to 5 lines; increase if education sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=10, max_length=200, limit=5)
 
     def extract_experience(self, text: str) -> list[str]:
+        # Add or remove keywords here to control which lines are captured as experience entries
         keywords = [
             'experience', 'worked', 'employed', 'position', 'role', 'job', 'responsibilities',
             'achievements', 'developer', 'engineer', 'analyst', 'manager', 'lead', 'specialist',
         ]
+        # limit=8: returns up to 8 lines; increase if experience sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=20, max_length=220, limit=8)
 
     def extract_entities(self, text: str) -> tuple[list[str], list[str], Optional[str]]:
@@ -195,6 +244,9 @@ class ResumeParser:
         return self._nlp
 
     def _guess_name(self, text: str) -> Optional[str]:
+        # Scans the first 8 lines of the resume for a plausible full name.
+        # A candidate line must: have 2-4 words, start with a capital letter, contain no '@'.
+        # Increase the [:8] range if applicant names are usually further down in the file.
         for line in text.splitlines()[:8]:
             candidate = ' '.join(line.split()).strip()
             if not candidate or '@' in candidate or len(candidate) > 60:
@@ -243,7 +295,36 @@ class ResumeParser:
             'tableau', 'power bi', 'excel', 'pandas', 'numpy',
             # Methodologies
             'agile', 'scrum', 'devops',
+            # IT / CS domain — broader terms for IT-focused and education-track roles
+            'programming', 'software development', 'information technology', 'computer science',
+            'networking', 'computer hardware', 'database management', 'systems analysis',
+            # Python-specific skills — Python instructor and developer roles
+            'object-oriented programming', 'oop', 'unit testing', 'debugging',
+            'virtual environment', 'web development', 'backend development', 'full stack development',
+            # Cybersecurity domain — for cybersecurity faculty and specialist roles
+            'cybersecurity', 'network security', 'information security', 'ethical hacking',
+            'penetration testing', 'cryptography', 'security operations', 'vulnerability assessment',
+            # IT professional experience / qualification — CS/IT faculty and consultant roles
+            'it consultancy', 'it certification', 'technical consulting', 'applied research',
+            'e-learning', 'lms',
             # Soft skills — keep in sync with _load_soft_skills in job_parser.py
             'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
             'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
+            # Academic / teaching domain — keep in sync with _SKILL_VOCAB in matcher.py and _load_soft_skills in job_parser.py
+            'teaching', 'instruction', 'curriculum development', 'course design',
+            'research', 'lecturing', 'academic writing', 'mentoring',
+            'laboratory supervision', 'thesis supervision',
+            # Pedagogical / instructional skills — key differentiators for teaching roles
+            'lesson planning', 'classroom management', 'student engagement',
+            'instructional design', 'course facilitation', 'learning management', 'student discipline',
+            # Faculty / academic professional skills — CS/IT Faculty JD requirements
+            'student assessment', 'student evaluation', 'academic advising', 'career guidance',
+            'seminar facilitation', 'laboratory instruction',
+            'professional development', 'faculty development', 'online learning', 'online course development',
+            # Technology in education — Cybersecurity/CS Faculty JD requirements
+            'educational technology', 'ai integration', 'digital transformation',
+            'blended learning', 'technology-enhanced learning', 'interpersonal skills',
+            # Instructor coaching skills — Python Programming Instructor JD requirements
+            'coaching', 'constructive feedback', 'presentation skills',
+            'project-based learning', 'student reporting',
         ]

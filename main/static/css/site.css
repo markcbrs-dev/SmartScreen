@@ -635,6 +635,87 @@ body { background-color: #f8fafc; color: #212529; }
   color: #fff;
 }
 
+/* "For Interview" button on applicant rows */
+.db-btn-interview {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.db-btn-interview:hover {
+  background: #15803d;
+  color: #fff;
+}
+
+/* "Contact" email button on the For Interview panel */
+.db-btn-contact {
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  transition: background 0.15s ease;
+}
+
+.db-btn-contact:hover {
+  background: #6d28d9;
+  color: #fff;
+}
+
+/* "Remove" button on the For Interview panel */
+.db-btn-remove {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.db-btn-remove:hover {
+  background: #b91c1c;
+  color: #fff;
+}
+
+/* Badge on sidebar nav items (e.g. interview count) */
+.db-nav-badge {
+  margin-left: auto;
+  background: #1e73d8;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 7px;
+  line-height: 1.6;
+  min-width: 20px;
+  text-align: center;
+}
+
 .db-card-grid {
   display: grid;
   grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);

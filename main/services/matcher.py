@@ -1,3 +1,52 @@
+"""
+main/services/matcher.py — Multi-factor resume-to-job scoring engine.
+
+OVERVIEW
+--------
+ResumeJobMatcher.match_resume_to_job() is the core algorithm.
+It produces a JobMatchResult with an overall_score (0.0–1.0) and a breakdown.
+
+SCORING WEIGHTS (when spaCy textcat is NOT available)
+------------------------------------------------------
+  Skill match       40%  — keyword/semantic overlap of resume skills vs. JD skills
+  Experience match  20%  — estimated experience level vs. JD requirement
+  Education match   15%  — estimated education level vs. JD requirement
+  Keyword similarity15%  — TF-IDF cosine (sklearn) or semantic (sentence-transformers)
+  Location match     5%  — resume location vs. JD location
+  Remote match       5%  — remote preference detection
+
+SCORING WEIGHTS (when spaCy textcat IS available, adds title prediction score)
+-------------------------------------------------------------------------------
+  Skill match       35%
+  Experience match  18%
+  Education match   12%
+  Keyword similarity10%
+  Title prediction  15%  ← spaCy textcat model (models/spacy_job_classifier/)
+  Location match     5%
+  Remote match       5%
+
+HOW TO MODIFY
+-------------
+  Adjust weights          → edit the `overall_score = (...)` expressions in
+                              match_resume_to_job() (both the with/without textcat branches)
+  Change skill vocabulary → edit _SKILL_VOCAB (used as fallback when JD has no skills)
+                              Keep in sync with _load_common_skills() in resume_parser.py
+  Change semantic threshold → edit `threshold = 0.72` in calculate_skill_match()
+  Change experience mapping → edit self.experience_mapping in __init__()
+  Change education mapping  → edit self.education_mapping in __init__()
+  Change skill floor        → edit the `if skill_score == 0.0` block at the end of
+                              match_resume_to_job()
+  Add a new scoring factor  → compute it, add to breakdown dict, add its weight to
+                              the overall_score sum, and add a field to JobMatchResult
+                              in entities.py
+
+DEBUG
+-----
+  Wrong overall score? → check breakdown dict in the returned JobMatchResult
+  Skills not matching? → check _SKILL_VOCAB and _load_common_skills() in resume_parser.py
+  NaN / 0 scores?      → check that resume_text / raw_text fields are not empty
+"""
+
 import re
 from typing import Iterable, Optional
 
@@ -40,9 +89,38 @@ _SKILL_VOCAB: list[str] = [
     'tableau', 'power bi', 'excel', 'pandas', 'numpy', 'tensorflow', 'pytorch',
     # Methodologies
     'agile', 'scrum', 'devops',
+    # IT / CS domain — broader terms that appear in IT-focused JDs and resumes
+    'programming', 'software development', 'information technology', 'computer science',
+    'networking', 'computer hardware', 'database management', 'systems analysis',
+    # Python-specific skills — Python instructor and developer roles
+    'object-oriented programming', 'oop', 'unit testing', 'debugging',
+    'virtual environment', 'web development', 'backend development', 'full stack development',
+    # Cybersecurity domain — for cybersecurity faculty and specialist roles
+    'cybersecurity', 'network security', 'information security', 'ethical hacking',
+    'penetration testing', 'cryptography', 'security operations', 'vulnerability assessment',
+    # IT professional experience / qualification — CS/IT faculty and consultant roles
+    'it consultancy', 'it certification', 'technical consulting', 'applied research',
+    'e-learning', 'lms',
     # Soft skills
     'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
     'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
+    # Academic / teaching domain — keep in sync with job_parser._load_soft_skills() and resume_parser._load_common_skills()
+    'teaching', 'instruction', 'curriculum development', 'course design',
+    'research', 'lecturing', 'academic writing', 'mentoring',
+    'laboratory supervision', 'thesis supervision',
+    # Pedagogical / instructional skills — key differentiators for teaching roles
+    'lesson planning', 'classroom management', 'student engagement',
+    'instructional design', 'course facilitation', 'learning management', 'student discipline',
+    # Faculty / academic professional skills — CS/IT Faculty JD requirements
+    'student assessment', 'student evaluation', 'academic advising', 'career guidance',
+    'seminar facilitation', 'laboratory instruction',
+    'professional development', 'faculty development', 'online learning', 'online course development',
+    # Technology in education — Cybersecurity/CS Faculty JD requirements
+    'educational technology', 'ai integration', 'digital transformation',
+    'blended learning', 'technology-enhanced learning', 'interpersonal skills',
+    # Instructor coaching skills — Python Programming Instructor JD requirements
+    'coaching', 'constructive feedback', 'presentation skills',
+    'project-based learning', 'student reporting',
 ]
 
 
@@ -60,7 +138,11 @@ class ResumeJobMatcher:
     def __init__(self):
         self.vectorizer = None
         if TfidfVectorizer is not None:
+            # ngram_range=(1,2) captures both single words and two-word phrases (e.g. 'machine learning')
+            # max_features=5000 limits vocabulary size for performance; raise if similarity scores seem low
             self.vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), max_features=5000)
+        # Ordinal scale 1-5 used to compare resume experience level to job requirement
+        # Edit the values here to change how seniority labels map to the scale
         self.experience_mapping = {
             'entry level': 1,
             'junior': 1,
@@ -71,6 +153,8 @@ class ResumeJobMatcher:
             'manager': 4,
             'director': 5,
         }
+        # Ordinal scale 1-5 for education level comparison
+        # Edit the values here to change how degree keywords map to the scale
         self.education_mapping = {
             'high school': 1,
             'associate': 2,
@@ -98,6 +182,9 @@ class ResumeJobMatcher:
         )
         experience_score = self.calculate_experience_match(resume.experience, job.experience_level)
         education_score = self.calculate_education_match(resume.education, job.education_requirements)
+        # Build a compact text of just the structured entities for keyword similarity.
+        # Focusing on entities (skills, experience, education) instead of raw paragraphs
+        # gives a cleaner signal; raw text is used as fallback when entities are empty.
         resume_entity_text = self._build_entity_text(resume.skills, resume.experience, resume.education)
         job_entity_text = self._build_entity_text(
             list(job.required_skills or []) + list(job.preferred_skills or []),
@@ -105,8 +192,8 @@ class ResumeJobMatcher:
             job.education_requirements,
         )
         keyword_score = self.calculate_keyword_similarity(
-            resume_entity_text or resume.raw_text,
-            job_entity_text or job.raw_text,
+            resume_entity_text or resume.raw_text,   # Prefer entity text; fall back to full resume text
+            job_entity_text or job.raw_text,          # Prefer entity text; fall back to full JD text
         )
         location_match = self.check_location_match(resume.locations, job.location)
         remote_match = self.check_remote_match(resume.raw_text, job.remote_option)
@@ -118,9 +205,13 @@ class ResumeJobMatcher:
             'education_score': education_score,
             'keyword_score': keyword_score,
             'location_score': 1.0 if location_match else 0.0,
-            'remote_score': 1.0 if remote_match else 0.5,
+            'remote_score': 1.0 if remote_match else 0.5,  # 0.5 (not 0.0) so remote mismatch is a soft penalty
         }
+        # Two weight sets depending on whether the spaCy textcat model is available.
+        # To adjust weights, edit the multipliers in each branch.
+        # The two sets must sum to 1.0.
         if title_prediction_score is None:
+            # spaCy textcat unavailable or returned None: use 6-component weights
             overall_score = (
                 breakdown['skill_score'] * 0.4
                 + breakdown['experience_score'] * 0.2
@@ -130,6 +221,7 @@ class ResumeJobMatcher:
                 + breakdown['remote_score'] * 0.05
             )
         else:
+            # spaCy textcat returned a score: add title_prediction (15%) and reduce other weights
             breakdown['title_prediction_score'] = title_prediction_score
             overall_score = (
                 breakdown['skill_score'] * 0.35
@@ -141,12 +233,23 @@ class ResumeJobMatcher:
                 + breakdown['title_prediction_score'] * 0.15
             )
 
-        # Skill floor: if the candidate matched none of the required skills,
-        # cap the overall score at 0.30 regardless of experience/education.
-        # This prevents a JS developer or office admin from scoring ~50% on a
-        # Python role simply because they have the right degree and years of exp.
-        if skill_score == 0.0 and (effective_required or effective_preferred):
-            overall_score = min(overall_score, 0.30)
+        # Graduated skill ceiling: prevents experience, education, and keyword
+        # components from padding a score when the candidate matches few required skills.
+        #
+        # Formula: ceiling = max(0.30, skill_score × 0.6 + 0.25)
+        #   skill_score = 0.00 → ceiling = 0.30  (same as old hard floor)
+        #   skill_score = 0.25 → ceiling = 0.40
+        #   skill_score = 0.30 → ceiling = 0.43
+        #   skill_score = 0.40 → ceiling = 0.49
+        #   skill_score ≥ 0.50 → no ceiling applied (half or more skills matched)
+        #
+        # Example: a developer with Python/Java applying for a CS Professor role
+        # that also requires teaching/curriculum/research would score ~0.28 on
+        # skill_match → ceiling ~0.42, preventing the 81% score caused by
+        # free experience + education + keyword padding.
+        if skill_score < 0.5 and (effective_required or effective_preferred):
+            skill_ceiling = max(0.30, skill_score * 0.6 + 0.25)
+            overall_score = min(overall_score, skill_ceiling)
 
         return JobMatchResult(
             overall_score=max(0.0, min(1.0, overall_score)),
@@ -196,9 +299,10 @@ class ResumeJobMatcher:
                 scores = st_util.cos_sim(skill_embedding, candidate_embeddings)[0]
                 return float(scores.max())
 
-            # Raised from 0.65 — stricter semantic matching reduces false positives
-            # where adjacent-domain skills (e.g. JavaScript vs Python) get partial credit.
-            threshold = 0.72
+            # Raised from 0.65 → 0.72 → 0.78: stricter threshold prevents cross-domain
+            # matches (e.g. 'teaching' vs 'python', or 'C++' vs 'Java') from inflating
+            # skill scores and producing misleadingly high overall match percentages.
+            threshold = 0.78
             required_scores = [semantic_best_score(skill, resume_embeddings) for skill in required] if required else []
             preferred_scores = [semantic_best_score(skill, resume_embeddings) for skill in preferred] if preferred else []
 
@@ -240,12 +344,13 @@ class ResumeJobMatcher:
 
     def calculate_experience_match(self, resume_experience: Iterable[str], job_experience_level: Optional[str]) -> float:
         if not job_experience_level:
-            return 1.0
+            return 1.0  # No experience requirement stated → full score for everyone
         resume_score = self._estimate_experience_level(resume_experience)
+        # If the job level label isn't in experience_mapping, default to 2 (mid-level)
         job_score = self.experience_mapping.get(job_experience_level.lower(), 2)
         if resume_score >= job_score:
-            return 1.0
-        return resume_score / max(job_score, 1)
+            return 1.0  # Meets or exceeds the requirement
+        return resume_score / max(job_score, 1)  # Partial credit proportional to how close they are
 
     def calculate_education_match(self, resume_education: Iterable[str], education_requirements: Iterable[str]) -> float:
         if not education_requirements:
@@ -266,6 +371,7 @@ class ResumeJobMatcher:
         if not resume_text.strip() or not job_text.strip():
             return 0.0
 
+        # Tier 1: sentence-transformers semantic embeddings (most accurate, but slowest)
         model = get_embedding_model()
         if model:
             resume_embedding = model.encode([resume_text], convert_to_tensor=True)
@@ -273,10 +379,13 @@ class ResumeJobMatcher:
             score = st_util.cos_sim(resume_embedding, job_embedding)
             return float(score[0][0])
 
+        # Tier 2: TF-IDF cosine similarity (faster, requires sklearn)
         if self.vectorizer is not None and cosine_similarity is not None:
             matrix = self.vectorizer.fit_transform([resume_text, job_text])
             similarity = cosine_similarity(matrix[0:1], matrix[1:2])
             return float(similarity[0][0])
+
+        # Tier 3: plain word-overlap Jaccard fallback (no external dependency)
         resume_words = set(re.findall(r'\b\w+\b', resume_text.lower()))
         job_words = set(re.findall(r'\b\w+\b', job_text.lower()))
         if not job_words:
@@ -299,12 +408,12 @@ class ResumeJobMatcher:
 
     def calculate_job_title_prediction_score(self, resume_text: str, job_title: Optional[str]) -> Optional[float]:
         if not resume_text.strip() or not job_title:
-            return None
+            return None  # Returns None → matcher uses the 6-component weight set (no textcat)
         classifier = get_job_title_classifier()
         score = classifier.score_label(resume_text, job_title)
         if score is None:
-            return None
-        return max(0.0, min(1.0, float(score)))
+            return None  # Model not loaded or label not recognised → textcat weight set skipped
+        return max(0.0, min(1.0, float(score)))  # Clamp to [0, 1] to guard against model edge cases
 
     def _extract_vocab_skills(self, text: str) -> list[str]:
         """Extract skills from free text using the shared vocabulary.
@@ -320,12 +429,14 @@ class ResumeJobMatcher:
         return text.lower().strip()
 
     def _estimate_experience_level(self, experience_lines: Iterable[str]) -> int:
-        best_score = 1
+        best_score = 1  # Default to entry-level (1) if no experience lines are found
         year_pattern = re.compile(r'(\d+)\+?\s*(?:years?|yrs?)', re.IGNORECASE)
 
         for line in experience_lines:
             lower_line = line.lower()
 
+            # Try to read explicit year counts first ('5 years of experience' → score 3)
+            # Edit these thresholds if the mapping doesn't match your domain's expectations
             for match in year_pattern.findall(lower_line):
                 years = int(match)
                 if years <= 1:
@@ -339,6 +450,7 @@ class ResumeJobMatcher:
                 else:
                     best_score = max(best_score, 5)
 
+            # Also match seniority label keywords ('senior developer' → score 3)
             for label, score in self.experience_mapping.items():
                 if label in lower_line:
                     best_score = max(best_score, score)

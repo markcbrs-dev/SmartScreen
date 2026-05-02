@@ -1,3 +1,51 @@
+"""
+main/services/job_parser.py — Extracts structured data from uploaded job description files.
+
+OVERVIEW
+--------
+JobDescriptionParser.parse() is the main entry point.
+It accepts a file-like object (TXT or DOCX) and returns a JobProfile dataclass.
+
+EXTRACTION PIPELINE
+-------------------
+  1. extract_text()               — reads raw text (TXT: charset fallback chain; DOCX: python-docx)
+  2. extract_job_title()          — regex label patterns → first-line role keyword heuristic → filename
+  3. extract_company()            — regex + optional spaCy ORG entity
+  4. extract_location()           — regex + optional spaCy GPE entity
+  5. extract_employment_type()    — keyword list match
+  6. extract_experience_level()   — keyword list match
+  7. extract_salary_range()       — regex patterns
+  8. extract_remote_option()      — keyword detection
+  9. extract_skills()             — section-based and full-text skill keyword extraction
+ 10. extract_responsibilities()   — section-based bullet extraction
+ 11. extract_qualifications()     — section-based bullet extraction
+ 12. extract_education_requirements()— section-based keyword extraction
+ 13. extract_certifications()     — section-based keyword extraction
+ 14. extract_benefits()           — section-based bullet extraction
+ 15. extract_industries()         — industry keyword match
+
+HOW TO MODIFY
+-------------
+  Add a new skill keyword       → add to _load_tech_skills() or _load_soft_skills()
+                                   Keep in sync with _SKILL_VOCAB in matcher.py and
+                                   _load_common_skills() in resume_parser.py
+  Add a new industry            → add to _load_industries()
+  Change title extraction       → edit extract_job_title() (regex patterns list + role_keywords)
+  Add a new section to parse    → add regex section heading patterns and a new extract_*() method
+  Change hard limits            → edit MAX_TEXT_LENGTH, MAX_DOCX_PARAGRAPHS, MAX_DOCX_TABLE_ROWS
+  Enable spaCy NER for company/location → set SMARTSCREEN_ENABLE_SPACY=1 env var
+  Change display formatting     → edit _format_docx_display_paragraph() for DOCX bold handling
+  Change preview text extraction→ edit extract_description_preview_text() and
+                                   extract_about_job_onward_text()
+
+DEBUG
+-----
+  Title parsed as None?         → check extract_job_title(); may need a new regex pattern
+  Skills always empty?          → check _load_tech_skills()/_load_soft_skills() vocabulary
+  Wrong section parsed?         → check _extract_section_items() heading pattern matching
+  DOCX text garbled?            → check extract_text_from_docx() / _format_docx_paragraph()
+"""
+
 import importlib
 import logging
 import os
@@ -24,19 +72,19 @@ ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in
 
 
 class JobDescriptionParser:
-    MAX_TEXT_LENGTH = 50000
-    MAX_DOCX_PARAGRAPHS = 250
-    MAX_DOCX_TABLE_ROWS = 150
+    MAX_TEXT_LENGTH = 50000       # Hard cap on raw text stored; raise if JDs are being silently truncated
+    MAX_DOCX_PARAGRAPHS = 250     # Stop reading DOCX paragraphs after this many; raise if content is cut off
+    MAX_DOCX_TABLE_ROWS = 150     # Stop reading DOCX table rows after this many
 
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
-        self._nlp = None
-        self._nlp_load_failed = False
-        self._nlp_model = nlp_model
-        self.tech_skills = self._load_tech_skills()
-        self.soft_skills = self._load_soft_skills()
-        self.employment_types = self._load_employment_types()
-        self.experience_levels = self._load_experience_levels()
-        self.industries = self._load_industries()
+        self._nlp = None               # Lazy-loaded spaCy model; loaded only when ENABLE_SPACY=1
+        self._nlp_load_failed = False  # Flag to avoid retrying a failed model load on every call
+        self._nlp_model = nlp_model    # Change the NER model name by passing a different value here
+        self.tech_skills = self._load_tech_skills()           # Modify _load_tech_skills() to add/remove tech skill keywords
+        self.soft_skills = self._load_soft_skills()           # Modify _load_soft_skills() to add/remove soft skill keywords
+        self.employment_types = self._load_employment_types() # Modify _load_employment_types() to recognise new contract types
+        self.experience_levels = self._load_experience_levels() # Modify _load_experience_levels() for new seniority labels
+        self.industries = self._load_industries()             # Modify _load_industries() to add new industry keywords
 
     def parse(self, file_obj, filename: Optional[str] = None) -> JobProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
@@ -155,8 +203,9 @@ class JobDescriptionParser:
     def extract_text_from_txt(self, file_obj) -> str:
         if hasattr(file_obj, 'seek'):
             file_obj.seek(0)
-        content = file_obj.read(self.MAX_TEXT_LENGTH + 1)
+        content = file_obj.read(self.MAX_TEXT_LENGTH + 1)  # Read 1 byte extra so _truncate_text can detect overflow
         if isinstance(content, bytes):
+            # Try common encodings in order; most files are UTF-8, but older Windows-saved files use cp1252
             for encoding in ('utf-8', 'latin-1', 'cp1252'):
                 try:
                     return self._truncate_text(content.decode(encoding))
@@ -166,6 +215,7 @@ class JobDescriptionParser:
         return self._truncate_text(str(content))
 
     def extract_job_title(self, text: str, filename: Optional[str] = None) -> Optional[str]:
+        # Add new job role words here if titles aren't being detected from first-line heuristic
         role_keywords = {
             'professor',
             'engineer',
@@ -184,6 +234,8 @@ class JobDescriptionParser:
             'trainer',
         }
 
+        # Priority 1: look for an explicit label like 'Job Title: ...' in the first 25 lines
+        # Add a new pattern here if your JD format uses a different heading
         patterns = [
             r'Job Title:\s*(.+)',
             r'Position:\s*(.+)',
@@ -202,10 +254,12 @@ class JobDescriptionParser:
                         role_keywords,
                     )
 
+        # Priority 2: try to infer the title from the filename (e.g. 'python_engineer.txt' → 'Python Engineer')
         filename_candidate = self._extract_title_from_filename(filename, role_keywords)
         if filename_candidate:
             return filename_candidate
 
+        # Priority 3: scan for hiring language like 'seeking a Senior Developer'
         summary_match = re.search(
             r'\b(?:seeking|hiring|looking for)\b[^.\n]{0,80}?\b([A-Z][A-Za-z&/\- ]{2,80}\b(?:Professor|Engineer|Developer|Analyst|Manager|Specialist|Consultant|Scientist|Designer|Administrator|Coordinator))\b',
             text,
@@ -214,6 +268,7 @@ class JobDescriptionParser:
         if summary_match:
             return self._normalize_title_candidate(summary_match.group(1), role_keywords)
 
+        # Priority 4 (last resort): scan first 40 lines for any line containing a known role keyword
         for line in text.splitlines()[:40]:
             candidate = ' '.join(line.split()).strip(':- ')
             if not candidate or len(candidate) > 120:
@@ -221,7 +276,7 @@ class JobDescriptionParser:
             words = [word.strip('.,()').lower() for word in candidate.split()]
             if any(word in role_keywords for word in words):
                 return self._normalize_title_candidate(candidate, role_keywords)
-        return None
+        return None  # Title could not be inferred; will fall back to filename stem in replace_active_job_description()
 
     def extract_company(self, text: str) -> Optional[str]:
         # Keep only specific header patterns; the broad 'About\s+(.+)' pattern
@@ -278,9 +333,12 @@ class JobDescriptionParser:
 
     def extract_experience_level(self, text: str) -> Optional[str]:
         text_lower = text.lower()
+        # First try to match a known seniority label (e.g. 'senior', 'junior') from experience_levels vocabulary
         for item in self.experience_levels:
             if re.search(r'\b' + re.escape(item) + r'\b', text_lower):
                 return item.title()
+        # Fallback: infer level from years of experience mentioned in the JD
+        # Modify the year thresholds here if the mapping feels off for your domain
         years_match = re.search(r'(\d+)\s*[-+]?\s*years?\s*(?:of)?\s*experience', text, re.IGNORECASE)
         if years_match:
             years = int(years_match.group(1))
@@ -289,7 +347,7 @@ class JobDescriptionParser:
             if years <= 5:
                 return 'Mid Level'
             return 'Senior Level'
-        return None
+        return None  # No level detected; matcher will treat job as mid-level by default
 
     def extract_salary_range(self, text: str) -> Optional[str]:
         patterns = [
@@ -314,10 +372,12 @@ class JobDescriptionParser:
         required = []
         preferred = []
         for skill in all_skills:
-            pattern = r'\b' + re.escape(skill) + r'\b'
+            pattern = r'\b' + re.escape(skill) + r'\b'  # Word-boundary match to avoid partial hits (e.g. 'r' matching 'ruby')
             if not re.search(pattern, text_lower):
                 continue
             occurrences = [match.start() for match in re.finditer(pattern, text_lower)]
+            # Check the surrounding text for preferred-context words like 'nice to have'
+            # See _is_preferred_context() to change what counts as 'preferred'
             if any(self._is_preferred_context(text_lower, index, len(skill)) for index in occurrences):
                 preferred.append(skill.title())
             else:
@@ -366,6 +426,7 @@ class JobDescriptionParser:
         return lines[:5]
 
     def extract_certifications(self, text: str) -> list[str]:
+        # Add new certifications here; they are matched as simple substrings (case-insensitive)
         results = []
         for cert in ['pmp', 'aws certified', 'microsoft certified', 'cisco', 'scrum master', 'security+']:
             if cert in text.lower():
@@ -391,16 +452,19 @@ class JobDescriptionParser:
             normalized = line.strip().lower()
             if not normalized:
                 continue
+            # Scan for a line that contains one of the section heading keywords
             if any(keyword in normalized for keyword in keywords):
+                # Collect up to 7 lines after the heading as section items
+                # Stops early on a blank line; increase index + 8 if your JDs have longer sections
                 for next_line in lines[index + 1:index + 8]:
-                    cleaned = re.sub(r'^[•\-*\d.)\s]+', '', next_line).strip()
+                    cleaned = re.sub(r'^[•\-*\d.)\s]+', '', next_line).strip()  # Strip bullet/number prefixes
                     if not cleaned:
-                        break
-                    if 8 < len(cleaned) < 220:
+                        break  # Blank line = end of section
+                    if 8 < len(cleaned) < 220:  # Ignore lines that are too short or too long to be items
                         items.append(cleaned)
                 if items:
-                    break
-        return list(dict.fromkeys(items))[:limit]
+                    break  # Stop after the first matching section
+        return list(dict.fromkeys(items))[:limit]  # dict.fromkeys preserves order and deduplicates
 
     def _extract_named_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
         lines = text.splitlines()
@@ -457,12 +521,14 @@ class JobDescriptionParser:
             run_text = run.text
             if not run_text:
                 continue
+            # Wrap bold runs in ** so views.py _render_inline_formatting() can convert them to <strong>
             if run.bold:
                 formatted_runs.append(f'**{run_text}**')
             else:
                 formatted_runs.append(run_text)
 
         formatted_text = ''.join(formatted_runs).strip() or text
+        # Prepend bullet symbol for DOCX 'List Bullet' style paragraphs that don't already have one
         if self._is_bullet_paragraph(paragraph) and not re.match(r'^[•\-*]', formatted_text.lstrip()):
             return f'• {formatted_text}'
         return formatted_text
@@ -476,6 +542,8 @@ class JobDescriptionParser:
         return re.sub(r'\*\*(.*?)\*\*', r'\1', line).strip().rstrip(':').lower()
 
     def _is_preferred_context(self, text: str, start: int, length: int) -> bool:
+        # Looks ±50 characters around the skill match for 'preferred', 'nice to have', etc.
+        # Add new preferred-context markers to this list if skills are being misclassified as required
         window_start = max(0, start - 50)
         window_end = min(len(text), start + length + 50)
         context = text[window_start:window_end]
@@ -489,13 +557,42 @@ class JobDescriptionParser:
             'docker', 'kubernetes', 'jenkins', 'terraform', 'git', 'linux', 'machine learning',
             'deep learning', 'ai', 'data science', 'data analysis', 'tableau', 'power bi',
             'agile', 'scrum', 'devops', 'rest api', 'graphql', 'microservices', 'kotlin',
-            'swift', 'flutter'
+            'swift', 'flutter',
+            # IT / CS domain — broader terms for IT-focused and education-track JDs
+            'programming', 'software development', 'information technology', 'computer science',
+            'networking', 'computer hardware', 'database management', 'systems analysis',
+            # Python-specific skills — Python instructor and developer roles
+            'object-oriented programming', 'oop', 'unit testing', 'debugging',
+            'virtual environment', 'web development', 'backend development', 'full stack development',
+            # Cybersecurity domain — for cybersecurity faculty and specialist roles
+            'cybersecurity', 'network security', 'information security', 'ethical hacking',
+            'penetration testing', 'cryptography', 'security operations', 'vulnerability assessment',
+            # IT professional experience / qualification — CS/IT faculty and consultant roles
+            'it consultancy', 'it certification', 'technical consulting', 'applied research',
+            'e-learning', 'lms',
         }
 
     def _load_soft_skills(self) -> set[str]:
         return {
             'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
             'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
+            # Academic / teaching domain — keep in sync with _SKILL_VOCAB in matcher.py and _load_common_skills in resume_parser.py
+            'teaching', 'instruction', 'curriculum development', 'course design',
+            'research', 'lecturing', 'academic writing', 'mentoring',
+            'laboratory supervision', 'thesis supervision',
+            # Pedagogical / instructional skills — key differentiators for teaching roles
+            'lesson planning', 'classroom management', 'student engagement',
+            'instructional design', 'course facilitation', 'learning management', 'student discipline',
+            # Faculty / academic professional skills — CS/IT Faculty JD requirements
+            'student assessment', 'student evaluation', 'academic advising', 'career guidance',
+            'seminar facilitation', 'laboratory instruction',
+            'professional development', 'faculty development', 'online learning', 'online course development',
+            # Technology in education — Cybersecurity/CS Faculty JD requirements
+            'educational technology', 'ai integration', 'digital transformation',
+            'blended learning', 'technology-enhanced learning', 'interpersonal skills',
+            # Instructor coaching skills — Python Programming Instructor JD requirements
+            'coaching', 'constructive feedback', 'presentation skills',
+            'project-based learning', 'student reporting',
         }
 
     def _load_employment_types(self) -> set[str]:
