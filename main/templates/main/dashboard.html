@@ -154,6 +154,7 @@
             <table class="table db-table mb-0" id="applicantsTable">
               <thead>
                 <tr>
+                  <th class="db-rank-col">#</th>
                   <th>Applicant</th>
                   <th>Position</th>
                   <th>Status</th>
@@ -165,6 +166,17 @@
               <tbody>
                 {% for a in applicants %}
                 <tr>
+                  <td class="db-rank-col">
+                    {% if a.rank == 1 %}
+                      <span class="db-rank-badge db-rank-gold" title="Rank #1">&#x1F947;</span>
+                    {% elif a.rank == 2 %}
+                      <span class="db-rank-badge db-rank-silver" title="Rank #2">&#x1F948;</span>
+                    {% elif a.rank == 3 %}
+                      <span class="db-rank-badge db-rank-bronze" title="Rank #3">&#x1F949;</span>
+                    {% else %}
+                      <span class="db-rank-badge db-rank-num">#{{ a.rank }}</span>
+                    {% endif %}
+                  </td>
                   <td>
                     <div class="db-applicant-cell">
                       <div class="db-applicant-avatar">
@@ -224,7 +236,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
+                  <td colspan="7" class="text-center text-muted py-4">No applicants yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -251,6 +263,7 @@
             <table class="table db-table mb-0" id="interviewTable">
               <thead>
                 <tr>
+                  <th class="db-rank-col">#</th>
                   <th>Applicant</th>
                   <th>Position</th>
                   <th>Match</th>
@@ -261,6 +274,17 @@
               <tbody>
                 {% for a in interview_applicants %}
                 <tr>
+                  <td class="db-rank-col">
+                    {% if a.rank == 1 %}
+                      <span class="db-rank-badge db-rank-gold" title="Rank #1">&#x1F947;</span>
+                    {% elif a.rank == 2 %}
+                      <span class="db-rank-badge db-rank-silver" title="Rank #2">&#x1F948;</span>
+                    {% elif a.rank == 3 %}
+                      <span class="db-rank-badge db-rank-bronze" title="Rank #3">&#x1F949;</span>
+                    {% else %}
+                      <span class="db-rank-badge db-rank-num">#{{ a.rank }}</span>
+                    {% endif %}
+                  </td>
                   <td>
                     <div class="db-applicant-cell">
                       <div class="db-applicant-avatar">
@@ -310,7 +334,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="5" class="text-center text-muted py-4">No applicants have been moved to For Interview yet.</td>
+                  <td colspan="6" class="text-center text-muted py-4">No applicants have been moved to For Interview yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>

@@ -594,6 +594,31 @@ body { background-color: #f8fafc; color: #212529; }
   min-width: 170px;
 }
 
+/* ── Rank column & badge ────────────────────────────────────────── */
+.db-rank-col {
+  width: 48px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.db-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.db-rank-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+
+/* ── Match bar ──────────────────────────────────────────────────── */
 .db-bar-bg {
   height: 8px;
   background: #e5e7eb;

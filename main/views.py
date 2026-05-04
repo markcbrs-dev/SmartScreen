@@ -370,6 +370,10 @@ def dashboard(request):
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
+    # Sort by match score descending (highest rank = #1), then by application date for ties.
+    applicants = sorted(applicants, key=lambda a: (-(a.match_score or 0), a.created_at))
+    for _rank_idx, _applicant in enumerate(applicants, 1):
+        _applicant.rank = _rank_idx
     total = len(applicants)
     new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
     reviewing_count = sum(1 for applicant in applicants if applicant.status == 'REVIEWING')
