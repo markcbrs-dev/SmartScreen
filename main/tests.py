@@ -510,6 +510,32 @@ class JobUploadTests(TestCase):
 		self.assertEqual(JobDescription.objects.count(), 0)
 		self.assertContains(response, 'Uploaded job description removed.')
 
+	def test_dashboard_removes_applicant_from_status_tab(self):
+		applicant = Applicant.objects.create(
+			first_name='Delete',
+			last_name='Me',
+			contact_number='+63 912 345 6789',
+			email='delete-me@example.com',
+			resume=build_docx_file(
+				'delete-me.docx',
+				[
+					'Delete Me',
+					'delete-me@example.com',
+					'+63 912 345 6789',
+				],
+			),
+		)
+
+		response = self.client.post(
+			reverse('dashboard'),
+			{'action': 'remove_applicant', 'applicant_id': str(applicant.id), 'redirect_panel': 'interview'},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertFalse(Applicant.objects.filter(id=applicant.id).exists())
+		self.assertContains(response, 'Delete Me was removed.')
+
 	def test_logout_clears_dashboard_session(self):
 		response = self.client.post(reverse('logout'), follow=True)
 

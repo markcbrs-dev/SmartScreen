@@ -233,7 +233,7 @@
         </section>
       </section>
 
-      <!-- FOR INTERVIEW PANEL -->
+      <!-- STATUS PANEL -->
       <section class="db-main-section" id="interviewSection" hidden>
         <section class="db-table-card">
           <div class="db-table-toolbar">
@@ -296,9 +296,6 @@
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
                   <td class="db-actions-cell">
-                    {% if a.resume %}
-                      <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
-                    {% endif %}
                     {% if a.status == 'NEW' %}
                       <a
                         href="mailto:{{ a.email }}?subject=Application%20Follow-up%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20would%20like%20to%20connect%20with%20you%20regarding%20your%20application%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
@@ -336,6 +333,15 @@
                         </button>
                       </form>
                     {% endif %}
+                    <form method="post" class="db-inline-form" style="margin-top:6px">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="remove_applicant">
+                      <input type="hidden" name="applicant_id" value="{{ a.id }}">
+                      <input type="hidden" name="redirect_panel" value="interview">
+                      <button type="submit" class="db-btn-remove" title="Remove applicant">
+                        <i class="bi bi-trash3-fill"></i> Remove Applicant
+                      </button>
+                    </form>
                   </td>
                 </tr>
                 {% empty %}

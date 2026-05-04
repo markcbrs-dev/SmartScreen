@@ -339,6 +339,20 @@ def dashboard(request):
                 messages.info(request, 'No uploaded job description to remove.')
             return redirect_to_dashboard('jobs')
 
+        if action == 'remove_applicant':
+            applicant_id = request.POST.get('applicant_id', '').strip()
+            redirect_panel = request.POST.get('redirect_panel', 'interview').strip()
+            applicant = Applicant.objects.filter(id=applicant_id).first() if applicant_id else None
+            if applicant is None:
+                messages.error(request, 'Applicant not found.')
+            else:
+                applicant_name = f'{applicant.first_name} {applicant.last_name}'.strip()
+                if applicant.resume:
+                    applicant.resume.delete(save=False)
+                applicant.delete()
+                messages.success(request, f'{applicant_name} was removed.')
+            return redirect_to_dashboard(redirect_panel)
+
         # Move an applicant to a new status (e.g. NEW → INTERVIEW).
         # The status value must be one of Applicant.STATUS_CHOICES.
         # Redirects back to the panel specified by 'redirect_panel' (defaults to 'dashboard').
