@@ -220,18 +220,6 @@
                     {% else %}
                       <span class="text-muted">Unavailable</span>
                     {% endif %}
-                    {% if a.status == 'NEW' or a.status == 'REVIEWING' %}
-                      <form method="post" class="db-inline-form" style="margin-top:4px">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="update_applicant_status">
-                        <input type="hidden" name="applicant_id" value="{{ a.id }}">
-                        <input type="hidden" name="new_status" value="INTERVIEW">
-                        <input type="hidden" name="redirect_panel" value="dashboard">
-                        <button type="submit" class="db-btn-interview" title="Move this applicant to For Interview">
-                          <i class="bi bi-person-check-fill"></i> For Interview
-                        </button>
-                      </form>
-                    {% endif %}
                   </td>
                 </tr>
                 {% empty %}
@@ -250,8 +238,8 @@
         <section class="db-table-card">
           <div class="db-table-toolbar">
             <div>
-              <h2 class="db-section-title">For Interview</h2>
-              <p class="db-section-copy">Applicants you have shortlisted for an interview. Use the Contact button to reach out via email.</p>
+              <h2 class="db-section-title">Status</h2>
+              <p class="db-section-copy">All applicants appear here. Use the available actions based on each applicant's current status.</p>
             </div>
             <div class="db-search-box">
               <i class="bi bi-search"></i>
@@ -311,30 +299,48 @@
                     {% if a.resume %}
                       <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
                     {% endif %}
-                    <!-- Opens the device mail client with a pre-filled interview invitation -->
-                    <a
-                      href="mailto:{{ a.email }}?subject=Interview%20Invitation%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20are%20pleased%20to%20invite%20you%20for%20an%20interview%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
-                      class="db-btn-contact"
-                      title="Send interview invitation to {{ a.email }}"
-                    >
-                      <i class="bi bi-envelope-fill"></i> Contact
-                    </a>
-                    <!-- Remove button: moves applicant back to Reviewing -->
-                    <form method="post" class="db-inline-form" style="margin-top:6px">
-                      {% csrf_token %}
-                      <input type="hidden" name="action" value="update_applicant_status">
-                      <input type="hidden" name="applicant_id" value="{{ a.id }}">
-                      <input type="hidden" name="new_status" value="REVIEWING">
-                      <input type="hidden" name="redirect_panel" value="interview">
-                      <button type="submit" class="db-btn-remove" title="Remove from For Interview">
-                        <i class="bi bi-x-circle-fill"></i> Remove
-                      </button>
-                    </form>
+                    {% if a.status == 'NEW' %}
+                      <a
+                        href="mailto:{{ a.email }}?subject=Application%20Follow-up%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20would%20like%20to%20connect%20with%20you%20regarding%20your%20application%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
+                        class="db-btn-contact"
+                        title="Contact {{ a.email }}"
+                      >
+                        <i class="bi bi-envelope-fill"></i> Contact
+                      </a>
+                      <form method="post" class="db-inline-form" style="margin-top:6px">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_applicant_status">
+                        <input type="hidden" name="applicant_id" value="{{ a.id }}">
+                        <input type="hidden" name="new_status" value="INTERVIEW">
+                        <input type="hidden" name="redirect_panel" value="interview">
+                        <button type="submit" class="db-btn-interview" title="Move this applicant to For Interview">
+                          <i class="bi bi-person-check-fill"></i> For Interview
+                        </button>
+                      </form>
+                    {% elif a.status == 'INTERVIEW' %}
+                      <a
+                        href="mailto:{{ a.email }}?subject=Interview%20Invitation%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20are%20pleased%20to%20invite%20you%20for%20an%20interview%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
+                        class="db-btn-contact"
+                        title="Send interview invitation to {{ a.email }}"
+                      >
+                        <i class="bi bi-envelope-fill"></i> Contact
+                      </a>
+                      <form method="post" class="db-inline-form" style="margin-top:6px">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_applicant_status">
+                        <input type="hidden" name="applicant_id" value="{{ a.id }}">
+                        <input type="hidden" name="new_status" value="NEW">
+                        <input type="hidden" name="redirect_panel" value="interview">
+                        <button type="submit" class="db-btn-remove" title="Remove from For Interview">
+                          <i class="bi bi-x-circle-fill"></i> Remove
+                        </button>
+                      </form>
+                    {% endif %}
                   </td>
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="6" class="text-center text-muted py-4">No applicants have been moved to For Interview yet.</td>
+                  <td colspan="6" class="text-center text-muted py-4">No applicants yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>

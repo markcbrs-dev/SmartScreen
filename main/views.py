@@ -376,11 +376,9 @@ def dashboard(request):
         _applicant.rank = _rank_idx
     total = len(applicants)
     new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
-    reviewing_count = sum(1 for applicant in applicants if applicant.status == 'REVIEWING')
     interview_count = sum(1 for applicant in applicants if applicant.status == 'INTERVIEW')
-    offers_count = sum(1 for applicant in applicants if applicant.status == 'OFFER')
-    # Pre-filter interview applicants for the dedicated sidebar panel
-    interview_applicants = [a for a in applicants if a.status == 'INTERVIEW']
+    # The Status panel now shows all applicants, with actions varying by status.
+    interview_applicants = applicants
     context = {
         'applicants': applicants,
         'interview_applicants': interview_applicants,
@@ -388,9 +386,7 @@ def dashboard(request):
         'active_job': active_job,
         'total': total,
         'new_count': new_count,
-        'reviewing_count': reviewing_count,
         'interview_count': interview_count,
-        'offers_count': offers_count,
     }
     return render(request, 'main/dashboard.html', context)
 

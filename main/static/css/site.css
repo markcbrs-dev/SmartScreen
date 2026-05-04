@@ -586,9 +586,7 @@ body { background-color: #f8fafc; color: #212529; }
 }
 
 .db-status-new { background: #eef2f7; color: #475569; }
-.db-status-reviewing { background: #fff4dc; color: #9a6700; }
 .db-status-interview { background: #dbeafe; color: #1d4ed8; }
-.db-status-offer { background: #dcfce7; color: #15803d; }
 
 .db-match-cell {
   min-width: 170px;
@@ -641,27 +639,6 @@ body { background-color: #f8fafc; color: #212529; }
   white-space: nowrap;
 }
 
-.db-btn-resume {
-  background: #0b5ec7;
-  color: #fff;
-  border: none;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.db-btn-resume:hover {
-  background: #094fa7;
-  color: #fff;
-}
 
 /* "For Interview" button on applicant rows */
 .db-btn-interview {

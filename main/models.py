@@ -89,9 +89,7 @@ class Applicant(models.Model):
     # MODIFY HERE: add or rename applicant pipeline stages
     STATUS_CHOICES = [
         ('NEW', 'New'),
-        ('REVIEWING', 'Reviewing'),
-        ('INTERVIEW', 'Interview'),
-        ('OFFER', 'Offer'),
+        ('INTERVIEW', 'For Interview'),
     ]
 
     first_name = models.CharField(max_length=100)
