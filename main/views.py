@@ -246,7 +246,7 @@ def login_view(request):
             messages.success(request, 'Logged in successfully.')
             return redirect('dashboard')
         else:
-            messages.error(request, 'Please correct the errors below.')
+            messages.error(request, 'Wrong Email or Password')
     else:
         form = AuthenticationForm()
     return render(request, 'main/hr_login.html', {'form': form})
@@ -461,6 +461,10 @@ def apply(request):
 
         if not first_name or not last_name or not contact or not email:
             messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'main/applicant.html', context)
+
+        if not re.fullmatch(r'\d{11}', contact):
+            messages.error(request, 'Contact number must be exactly 11 digits.')
             return render(request, 'main/applicant.html', context)
 
         if not resume_file:

@@ -11,18 +11,15 @@
     .header{ background:var(--blue); color:white; padding:14px 18px; display:flex; align-items:center; gap:12px; }
     .logo{ width:40px; height:40px; object-fit:contain; display:block; }
     .brand{ font-weight:700; font-size:17px; letter-spacing:1px; }
-    .wrap{ min-height:calc(100vh - 68px); display:flex; align-items:center; justify-content:center; padding:36px 16px; position:relative; }
+    .wrap{ min-height:calc(100vh - 68px); display:flex; align-items:center; justify-content:center; padding:36px 16px; }
     .card{ width:100%; max-width:var(--max-width); background:var(--card-bg); border-radius:var(--radius); padding:22px; border:1px solid rgba(15,23,42,0.04); }
-    .card-link-row{ position:absolute; top:20px; left:20px; }
-    .card-link{ display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:999px; background:#e8f0fd; color:#0b5ec7; text-decoration:none; font-size:13px; font-weight:700; }
-    .card-link:hover{ background:#d8e6fb; }
     .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:var(--gap); }
     label{ font-size:12px; color:var(--muted); font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
     input[type="text"], input[type="email"], input[type="password"]{ padding:10px 12px; border-radius:10px; border:1px solid var(--line); font-size:14px; outline:none; }
     input:focus{ border-color:rgba(30,115,216,0.9); box-shadow:0 4px 12px rgba(30,115,216,0.08); }
     .submit{ margin-top:14px; width:100%; padding:10px 12px; border-radius:10px; border:none; background:var(--blue-dark); color:white; font-weight:700; cursor:pointer; }
     .secondary-action{ margin-top:10px; }
-    .button-link{ display:block; box-sizing:border-box; text-align:center; text-decoration:none; }
+    .button-link{ display:flex; align-items:center; justify-content:center; box-sizing:border-box; text-align:center; text-decoration:none; line-height:normal; }
   </style>
 </head>
 <body>
@@ -32,9 +29,6 @@
   </header>
 
   <main class="wrap" role="main">
-    <div class="card-link-row">
-      <a href="{% url 'login' %}" class="card-link">Back to login</a>
-    </div>
     <form class="card" method="post" action="" novalidate>
       {% csrf_token %}
       <h2>HR Registration</h2>
@@ -58,6 +52,9 @@
       </div>
 
       <button type="submit" class="submit">Register</button>
+      <div class="secondary-action">
+        <a href="{% url 'login' %}" class="submit button-link">Login</a>
+      </div>
     </form>
   </main>
 </body>

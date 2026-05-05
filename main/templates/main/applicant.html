@@ -523,7 +523,7 @@
 
         <div class="field">
           <label for="contact">Contact Number</label>
-          <input id="contact" name="contact" type="tel" inputmode="tel" placeholder="+63 9xx xxx xxxx" value="{{ request.POST.contact|default:'' }}" required />
+          <input id="contact" name="contact" type="tel" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" value="{{ request.POST.contact|default:'' }}" required />
         </div>
 
         <div class="field">
@@ -632,6 +632,7 @@
     const resumeInput = document.getElementById('resumeInput');
     const fileNameEl = document.getElementById('fileName');
     const applicantLayout = document.getElementById('applicantLayout');
+    const contactInput = document.getElementById('contact');
     const jobIdSelect = document.getElementById('jobId');
     const jobDescriptionCard = document.getElementById('jobDescriptionCard');
     const jobDescriptionTitle = document.getElementById('job-description-title');
@@ -661,6 +662,12 @@
 
       fileNameEl.textContent = file.name;
     });
+
+    if (contactInput) {
+      contactInput.addEventListener('input', function () {
+        contactInput.value = contactInput.value.replace(/\D/g, '').slice(0, 11);
+      });
+    }
 
     function syncJobDescriptionVisibility() {
       if (!jobIdSelect || !jobDescriptionCard) {
