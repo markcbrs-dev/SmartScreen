@@ -19,7 +19,10 @@
 {% block navbar %}
 <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
 	<div class="container">
-		<a class="navbar-brand" href="/">SmartScreen</a>
+		<a class="navbar-brand d-inline-flex align-items-center gap-2" href="/">
+			<img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="navbar-brand-logo">
+			<span>SmartScreen</span>
+		</a>
 		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
 			<span class="navbar-toggler-icon"></span>
 		</button>

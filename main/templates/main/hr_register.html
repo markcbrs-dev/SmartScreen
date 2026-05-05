@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,7 +9,7 @@
     :root{ --blue:#1e73d8; --blue-dark:#0b5ec7; --muted:#6b7280; --card-bg:#ffffff; --page-bg:#eef4fb; --line:rgba(15,23,42,0.08); --radius:18px; --max-width:420px; --gap:14px; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
     html,body{ height:100%; margin:0; background:linear-gradient(180deg, #eaf2ff 0%, var(--page-bg) 40%, #f8fbff 100%); color:#111827; }
     .header{ background:var(--blue); color:white; padding:14px 18px; display:flex; align-items:center; gap:12px; }
-    .logo{ width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; letter-spacing:0.6px; }
+    .logo{ width:40px; height:40px; object-fit:contain; display:block; }
     .brand{ font-weight:700; font-size:17px; letter-spacing:1px; }
     .wrap{ min-height:calc(100vh - 68px); display:flex; align-items:center; justify-content:center; padding:36px 16px; position:relative; }
     .card{ width:100%; max-width:var(--max-width); background:var(--card-bg); border-radius:var(--radius); padding:22px; border:1px solid rgba(15,23,42,0.04); }
@@ -26,7 +27,7 @@
 </head>
 <body>
   <header class="header" role="banner">
-    <div class="logo" aria-hidden="true">S</div>
+    <img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="logo" />
     <div class="brand">SMARTSCREEN</div>
   </header>
 

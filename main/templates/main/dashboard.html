@@ -13,7 +13,7 @@
 <nav class="db-topnav">
   <div class="db-topnav-inner">
     <div class="d-flex align-items-center gap-3">
-      <div class="db-brand-mark" aria-hidden="true">S</div>
+        <img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="db-brand-logo">
         <div class="db-brand-text">SMARTSCREEN</div>
         <div class="db-brand-subtitle">HR Dashboard</div>
       </div>
@@ -179,9 +179,6 @@
                   </td>
                   <td>
                     <div class="db-applicant-cell">
-                      <div class="db-applicant-avatar">
-                        {{ a.first_name|slice:":1"|upper }}{{ a.last_name|slice:":1"|upper }}
-                      </div>
                       <div>
                         <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
                         <div class="db-applicant-email">{{ a.email }}</div>
@@ -214,9 +211,17 @@
                     {% endif %}
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
-                  <td>
+                  <td class="db-actions-cell">
                     {% if a.resume %}
-                      <a href="{{ a.resume.url }}" target="_blank" class="db-btn-resume">View Resume</a>
+                      <button
+                        type="button"
+                        class="db-btn-resume"
+                        onclick="window.open('{{ a.resume.url }}', '_blank', 'noopener,noreferrer')"
+                        title="View uploaded resume"
+                        style="background:#1e73d8;color:#fff;border:none;border-radius:999px;padding:6px 12px;font-size:0.78rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;box-shadow:none;"
+                      >
+                        <i class="bi bi-file-earmark-text-fill"></i> View Resume
+                      </button>
                     {% else %}
                       <span class="text-muted">Unavailable</span>
                     {% endif %}
@@ -275,9 +280,6 @@
                   </td>
                   <td>
                     <div class="db-applicant-cell">
-                      <div class="db-applicant-avatar">
-                        {{ a.first_name|slice:":1"|upper }}{{ a.last_name|slice:":1"|upper }}
-                      </div>
                       <div>
                         <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
                         <div class="db-applicant-email">{{ a.email }}</div>

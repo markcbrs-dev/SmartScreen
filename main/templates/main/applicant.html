@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -47,14 +48,8 @@
     .logo{
       width:40px;
       height:40px;
-      border-radius:50%;
-      background:rgba(255,255,255,0.18);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-weight:700;
-      font-size:16px;
-      letter-spacing:0.6px;
+      object-fit:contain;
+      display:block;
     }
 
     .brand{
@@ -496,10 +491,9 @@
   {{ job_details|json_script:"jobDetailsData" }}
   <header class="header" role="banner">
     <div class="header-left">
-      <div class="logo" aria-hidden="true">S</div>
+      <img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="logo" />
       <div class="brand">SMARTSCREEN</div>
     </div>
-    <a class="header-link" href="{% url 'login' %}">HR Login</a>
   </header>
 
   <main class="wrap" role="main">

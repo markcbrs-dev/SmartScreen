@@ -2,6 +2,11 @@
 body { background-color: #f8fafc; color: #212529; }
 .card { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 .navbar-brand { font-weight: 600; }
+.navbar-brand-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
 .container { padding-top: 1rem; padding-bottom: 2rem; }
 
 /* Utility */
@@ -52,6 +57,13 @@ body { background-color: #f8fafc; color: #212529; }
   font-weight: 700;
   font-size: 1.125rem;
   letter-spacing: 0.08em;
+}
+
+.db-brand-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
 .db-brand-subtitle {
@@ -553,11 +565,22 @@ body { background-color: #f8fafc; color: #212529; }
   border-radius: 50%;
   background: #eaf2ff;
   color: #1e73d8;
-  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 0.05em;
+  flex: 0 0 44px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.db-applicant-avatar i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .db-applicant-name {
@@ -590,6 +613,11 @@ body { background-color: #f8fafc; color: #212529; }
 
 .db-match-cell {
   min-width: 170px;
+}
+
+.db-actions-cell {
+  min-width: 150px;
+  white-space: nowrap;
 }
 
 /* ── Rank column & badge ────────────────────────────────────────── */
@@ -637,6 +665,29 @@ body { background-color: #f8fafc; color: #212529; }
   font-weight: 700;
   color: #1e73d8;
   white-space: nowrap;
+}
+
+
+/* "View Resume" pill button */
+.db-btn-resume {
+  background: #1e73d8;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.db-btn-resume:hover {
+  background: #1667c8;
+  color: #fff;
 }
 
 
