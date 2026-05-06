@@ -44,6 +44,13 @@ import re
 from typing import IO, Optional
 
 from .entities import ResumeProfile
+from .skills import (
+    extract_canonical_skills,
+    get_canonical_skills,
+    normalize_education_entries,
+    normalize_list_text,
+    normalize_location_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +91,8 @@ class ResumeParser:
         profile.email = self.extract_email(raw_text)
         profile.phone = self.extract_phone(raw_text)
         profile.skills = self.extract_skills(raw_text)
-        profile.education = self.extract_education(raw_text)
-        profile.experience = self.extract_experience(raw_text)
+        profile.education = normalize_education_entries(self.extract_education(raw_text))
+        profile.experience = normalize_list_text(self.extract_experience(raw_text))
         profile.organizations, profile.locations, profile.full_name = self.extract_entities(raw_text)
         return profile
 
@@ -174,14 +181,7 @@ class ResumeParser:
         return None
 
     def extract_skills(self, text: str) -> list[str]:
-        text_lower = text.lower()
-        skills = []
-        for skill in self.common_skills:
-            # \b ensures we match whole words only (e.g. 'go' won't match 'django')
-            pattern = r'\b' + re.escape(skill) + r'\b'
-            if re.search(pattern, text_lower):
-                skills.append(skill.title())
-        return sorted(set(skills))  # Deduplicate and sort alphabetically
+        return extract_canonical_skills(text)
 
     def extract_education(self, text: str) -> list[str]:
         # Add or remove keywords here to control which lines are captured as education entries
@@ -189,6 +189,15 @@ class ResumeParser:
             'university', 'college', 'institute', 'school', 'academy',
             'bachelor', 'master', 'phd', 'mba', 'degree', 'diploma', 'certification',
         ]
+        section_text = self._extract_first_section_text(
+            text,
+            ['education', 'academic background', 'academic qualifications', 'qualifications'],
+            ['experience', 'work experience', 'employment history', 'professional experience', 'projects', 'skills', 'certifications'],
+        )
+        if section_text:
+            lines = self._extract_section_lines(section_text, keywords, min_length=10, max_length=200, limit=5)
+            if lines:
+                return lines
         # limit=5: returns up to 5 lines; increase if education sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=10, max_length=200, limit=5)
 
@@ -198,6 +207,15 @@ class ResumeParser:
             'experience', 'worked', 'employed', 'position', 'role', 'job', 'responsibilities',
             'achievements', 'developer', 'engineer', 'analyst', 'manager', 'lead', 'specialist',
         ]
+        section_text = self._extract_first_section_text(
+            text,
+            ['experience', 'work experience', 'employment history', 'professional experience', 'career history', 'projects'],
+            ['education', 'academic background', 'skills', 'certifications', 'references'],
+        )
+        if section_text:
+            lines = self._extract_section_lines(section_text, keywords + ['years', 'yrs'], min_length=20, max_length=220, limit=8)
+            if lines:
+                return lines
         # limit=8: returns up to 8 lines; increase if experience sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=20, max_length=220, limit=8)
 
@@ -228,7 +246,9 @@ class ResumeParser:
         if not full_name:
             full_name = self._guess_name(text)
 
-        return sorted(set(organizations)), sorted(set(locations)), full_name
+        normalized_organizations = normalize_list_text(organizations)
+        normalized_locations = normalize_list_text(normalize_location_text(location) for location in locations)
+        return normalized_organizations, normalized_locations, full_name
 
     def _get_nlp(self):
         if self._nlp is not None:
@@ -247,14 +267,62 @@ class ResumeParser:
         # Scans the first 8 lines of the resume for a plausible full name.
         # A candidate line must: have 2-4 words, start with a capital letter, contain no '@'.
         # Increase the [:8] range if applicant names are usually further down in the file.
+        excluded_tokens = {'resume', 'curriculum vitae', 'cv', 'experience', 'education', 'skills', 'profile', 'summary'}
         for line in text.splitlines()[:8]:
             candidate = ' '.join(line.split()).strip()
-            if not candidate or '@' in candidate or len(candidate) > 60:
+            normalized_candidate = candidate.lower().rstrip(':')
+            if not candidate or '@' in candidate or len(candidate) > 60 or any(char.isdigit() for char in candidate):
+                continue
+            if normalized_candidate in excluded_tokens:
                 continue
             words = candidate.split()
             if 1 < len(words) < 5 and all(word[:1].isupper() for word in words if word.isalpha()):
                 return candidate
         return None
+
+    def _extract_first_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
+        lines = text.splitlines()
+        start_index = None
+        for index, line in enumerate(lines):
+            normalized = ' '.join(line.strip().lower().rstrip(':').split())
+            if normalized in section_names:
+                start_index = index + 1
+                break
+
+        if start_index is None:
+            return ''
+
+        collected = []
+        for line in lines[start_index:]:
+            stripped = ' '.join(line.split()).strip()
+            if not stripped:
+                if collected:
+                    collected.append('')
+                continue
+
+            normalized = stripped.lower().rstrip(':')
+            if normalized in stop_names:
+                break
+            collected.append(stripped)
+
+        return '\n'.join(collected).strip()
+
+    def _extract_section_lines(
+        self,
+        text: str,
+        keywords: list[str],
+        min_length: int,
+        max_length: int,
+        limit: int,
+    ) -> list[str]:
+        lines = []
+        for raw_line in text.splitlines():
+            line = ' '.join(raw_line.split())
+            line_lower = line.lower()
+            line = re.sub(r'^[•\-*\d.)\s]+', '', line).strip()
+            if any(keyword in line_lower for keyword in keywords) and min_length < len(line) < max_length:
+                lines.append(line)
+        return lines[:limit]
 
     def _extract_keyword_lines(
         self,
@@ -277,54 +345,4 @@ class ResumeParser:
         return os.path.splitext(str(name))[1].lower()
 
     def _load_common_skills(self) -> list[str]:
-        # Keep in sync with _SKILL_VOCAB in matcher.py and tech_skills in job_parser.py.
-        return [
-            # Languages
-            'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'ruby', 'go', 'rust',
-            'kotlin', 'swift', 'php',
-            # Web / frontend
-            'html', 'css', 'react', 'angular', 'vue', 'node.js', 'express', 'flutter',
-            # Backend / frameworks
-            'django', 'flask', 'fastapi', 'graphql', 'rest api', 'microservices',
-            # Databases
-            'sql', 'mongodb', 'postgresql', 'mysql', 'redis', 'aws', 'azure', 'gcp',
-            # Cloud & DevOps
-            'docker', 'kubernetes', 'jenkins', 'terraform', 'git', 'linux',
-            # Data / AI
-            'machine learning', 'deep learning', 'ai', 'data science', 'data analysis',
-            'tableau', 'power bi', 'excel', 'pandas', 'numpy',
-            # Methodologies
-            'agile', 'scrum', 'devops',
-            # IT / CS domain — broader terms for IT-focused and education-track roles
-            'programming', 'software development', 'information technology', 'computer science',
-            'networking', 'computer hardware', 'database management', 'systems analysis',
-            # Python-specific skills — Python instructor and developer roles
-            'object-oriented programming', 'oop', 'unit testing', 'debugging',
-            'virtual environment', 'web development', 'backend development', 'full stack development',
-            # Cybersecurity domain — for cybersecurity faculty and specialist roles
-            'cybersecurity', 'network security', 'information security', 'ethical hacking',
-            'penetration testing', 'cryptography', 'security operations', 'vulnerability assessment',
-            # IT professional experience / qualification — CS/IT faculty and consultant roles
-            'it consultancy', 'it certification', 'technical consulting', 'applied research',
-            'e-learning', 'lms',
-            # Soft skills — keep in sync with _load_soft_skills in job_parser.py
-            'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
-            'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
-            # Academic / teaching domain — keep in sync with _SKILL_VOCAB in matcher.py and _load_soft_skills in job_parser.py
-            'teaching', 'instruction', 'curriculum development', 'course design',
-            'research', 'lecturing', 'academic writing', 'mentoring',
-            'laboratory supervision', 'thesis supervision',
-            # Pedagogical / instructional skills — key differentiators for teaching roles
-            'lesson planning', 'classroom management', 'student engagement',
-            'instructional design', 'course facilitation', 'learning management', 'student discipline',
-            # Faculty / academic professional skills — CS/IT Faculty JD requirements
-            'student assessment', 'student evaluation', 'academic advising', 'career guidance',
-            'seminar facilitation', 'laboratory instruction',
-            'professional development', 'faculty development', 'online learning', 'online course development',
-            # Technology in education — Cybersecurity/CS Faculty JD requirements
-            'educational technology', 'ai integration', 'digital transformation',
-            'blended learning', 'technology-enhanced learning', 'interpersonal skills',
-            # Instructor coaching skills — Python Programming Instructor JD requirements
-            'coaching', 'constructive feedback', 'presentation skills',
-            'project-based learning', 'student reporting',
-        ]
+        return get_canonical_skills()

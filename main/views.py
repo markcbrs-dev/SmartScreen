@@ -46,6 +46,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.urls import reverse
 from html import escape
+from collections import defaultdict
 import re
 from .models import Applicant, JobDescription
 import os
@@ -391,18 +392,77 @@ def dashboard(request):
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
-    # Sort by match score descending (highest rank = #1), then by application date for ties.
-    applicants = sorted(applicants, key=lambda a: (-(a.match_score or 0), a.created_at))
-    for _rank_idx, _applicant in enumerate(applicants, 1):
-        _applicant.rank = _rank_idx
+
+    grouped_applicants: dict[tuple[str, object], list[Applicant]] = defaultdict(list)
+    for applicant in applicants:
+        if applicant.applied_job_id:
+            group_key = ('job', applicant.applied_job_id)
+        elif applicant.position:
+            group_key = ('position', applicant.position.strip().lower())
+        else:
+            group_key = ('unassigned', 'pending')
+        grouped_applicants[group_key].append(applicant)
+
+    applicant_position_groups: list[dict[str, object]] = []
+    grouped_lookup = {
+        ('job', job.id): {
+            'group_title': job.title,
+            'group_subtitle': f'{job.company} · {job.location}' if job.company and job.location else job.company or job.location or 'No applicants yet.',
+            'group_job': job,
+            'applicants': [],
+        }
+        for job in jobs
+    }
+
+    for group_key, group_items in grouped_applicants.items():
+        sorted_group = sorted(group_items, key=lambda a: (-(a.match_score or 0), a.created_at))
+        for rank_idx, applicant in enumerate(sorted_group, 1):
+            applicant.rank = rank_idx
+
+        existing_group = grouped_lookup.get(group_key)
+        if existing_group is not None:
+            existing_group['applicants'] = sorted_group
+            continue
+
+        sample = sorted_group[0]
+        group_title = sample.position or 'Pending match'
+        group_subtitle = 'Applicants without a linked uploaded job description.'
+        if group_key[0] == 'unassigned':
+            group_title = 'Pending Match'
+            group_subtitle = 'Applicants without a stored job match yet.'
+
+        grouped_lookup[group_key] = {
+            'group_title': group_title,
+            'group_subtitle': group_subtitle,
+            'group_job': getattr(sample, 'applied_job', None),
+            'applicants': sorted_group,
+        }
+
+    for job in jobs:
+        job_group = grouped_lookup[('job', job.id)]
+        if job_group['applicants']:
+            applicant_position_groups.append(job_group)
+
+    for group_key, group in grouped_lookup.items():
+        if group_key[0] != 'job':
+            applicant_position_groups.append(group)
+
+    applicants = [
+        applicant
+        for group in applicant_position_groups
+        for applicant in group['applicants']
+    ]
     total = len(applicants)
     new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
     interview_count = sum(1 for applicant in applicants if applicant.status == 'INTERVIEW')
     # The Status panel now shows all applicants, with actions varying by status.
     interview_applicants = applicants
+    interview_position_groups = applicant_position_groups
     context = {
         'applicants': applicants,
+        'applicant_position_groups': applicant_position_groups,
         'interview_applicants': interview_applicants,
+        'interview_position_groups': interview_position_groups,
         'jobs': jobs,
         'active_job': active_job,
         'total': total,

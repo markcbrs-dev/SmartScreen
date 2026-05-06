@@ -151,6 +151,28 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertIn('title_prediction_score', result.breakdown)
         self.assertAlmostEqual(result.breakdown['title_prediction_score'], 0.8)
 
+    def test_matcher_ignores_low_confidence_title_prediction_scores(self):
+        resume = ResumeProfile(
+            raw_text='Python TensorFlow machine learning',
+            skills=['Python', 'TensorFlow'],
+            education=['Bachelor of Science'],
+            experience=['Machine learning engineer'],
+        )
+        job = JobProfile(
+            title='AI Engineer',
+            raw_text='Python TensorFlow machine learning',
+            required_skills=['Python', 'TensorFlow'],
+        )
+
+        class StubClassifier:
+            def score_label(self, text, label):
+                return 0.3
+
+        with patch('main.services.matcher.get_job_title_classifier', return_value=StubClassifier()):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertNotIn('title_prediction_score', result.breakdown)
+
     def test_matcher_uses_structured_entities_for_keyword_similarity_when_raw_text_is_sparse(self):
         resume = ResumeProfile(
             raw_text='miscellaneous text',
@@ -171,6 +193,69 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertGreater(result.keyword_match_score, 0.0)
         self.assertIn('Python', result.matching_skills)
+
+    def test_matcher_caps_overall_score_when_resume_lacks_most_required_skills(self):
+        resume = ResumeProfile(
+            raw_text='Senior developer with Python, leadership, architecture, and stakeholder management.',
+            skills=['Python', 'Leadership', 'Communication'],
+            education=['Bachelor of Science in Computer Science'],
+            experience=['Senior software engineer with 8 years of experience'],
+        )
+        job = JobProfile(
+            title='Backend Platform Engineer',
+            raw_text='Python Django REST API PostgreSQL Docker Kubernetes backend platform engineering',
+            required_skills=['Python', 'Django', 'REST API', 'PostgreSQL', 'Docker'],
+            preferred_skills=['Kubernetes'],
+            experience_level='senior',
+            education_requirements=['Bachelor of Science in Computer Science'],
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertLessEqual(result.skill_match_score, 0.3)
+        self.assertLessEqual(result.overall_score, 0.3)
+
+    def test_matcher_treats_missing_job_skills_as_neutral_not_perfect(self):
+        resume = ResumeProfile(
+            raw_text='Generalist engineer with strong communication and leadership.',
+            skills=['Communication', 'Leadership'],
+            education=[],
+            experience=[],
+        )
+        job = JobProfile(
+            title='Operations Generalist',
+            raw_text='Join our growing team and support daily operations.',
+            required_skills=[],
+            preferred_skills=[],
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertEqual(result.skill_match_score, 0.5)
+        self.assertLess(result.overall_score, 1.0)
+
+    def test_matcher_weights_hard_skills_above_soft_skills(self):
+        resume = ResumeProfile(
+            raw_text='Strong communicator and team leader with stakeholder management experience.',
+            skills=['Communication', 'Leadership'],
+            education=['Bachelor of Science in Computer Science'],
+            experience=['Team lead with 5 years of experience'],
+        )
+        job = JobProfile(
+            title='Backend Engineer',
+            raw_text='Python communication backend engineer',
+            required_skills=['Python', 'Communication'],
+            preferred_skills=[],
+            education_requirements=['Bachelor of Science in Computer Science'],
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertLess(result.skill_match_score, 0.5)
+        self.assertIn('Python', result.missing_skills)
 
     def test_estimate_experience_level_uses_explicit_years(self):
         matcher = ResumeJobMatcher()

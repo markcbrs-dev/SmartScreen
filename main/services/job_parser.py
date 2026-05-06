@@ -54,6 +54,17 @@ from html import escape
 from typing import Optional
 
 from .entities import JobProfile
+from .skills import (
+    extract_canonical_skills,
+    get_canonical_skills,
+    normalize_education_entries,
+    normalize_employment_type,
+    normalize_experience_level,
+    normalize_list_text,
+    normalize_location_text,
+    normalize_title_text,
+    normalize_whitespace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +100,9 @@ class JobDescriptionParser:
     def parse(self, file_obj, filename: Optional[str] = None) -> JobProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
         required_skills, preferred_skills = self.extract_skills(raw_text)
+        title = self.extract_job_title(raw_text, filename=filename)
         return JobProfile(
-            title=self.extract_job_title(raw_text, filename=filename),
+            title=normalize_title_text(title) if title else None,
             company=self.extract_company(raw_text),
             location=self.extract_location(raw_text),
             employment_type=self.extract_employment_type(raw_text),
@@ -101,7 +113,7 @@ class JobDescriptionParser:
             preferred_skills=preferred_skills,
             responsibilities=self.extract_responsibilities(raw_text),
             qualifications=self.extract_qualifications(raw_text),
-            education_requirements=self.extract_education_requirements(raw_text),
+            education_requirements=normalize_education_entries(self.extract_education_requirements(raw_text)),
             certifications=self.extract_certifications(raw_text),
             benefits=self.extract_benefits(raw_text),
             industries=self.extract_industries(raw_text),
@@ -286,13 +298,13 @@ class JobDescriptionParser:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 if len(match.strip()) > 2:
-                    return match.strip()
+                    return normalize_whitespace(match)
         nlp = self._get_nlp()
         if nlp is not None:
             doc = nlp(text[:1000])
             for entity in doc.ents:
                 if entity.label_ == 'ORG' and len(entity.text.strip()) > 2:
-                    return entity.text.strip()
+                    return normalize_whitespace(entity.text)
         return None
 
     def extract_location(self, text: str) -> Optional[str]:
@@ -300,7 +312,7 @@ class JobDescriptionParser:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 if len(match.strip()) > 2:
-                    return match.strip()
+                    return normalize_location_text(match)
         nlp = self._get_nlp()
         if nlp is not None:
             doc = nlp(text[:1500])
@@ -308,7 +320,7 @@ class JobDescriptionParser:
             # 'Silicon Valley') so regional area names are not missed.
             locations = [entity.text.strip() for entity in doc.ents if entity.label_ in {'GPE', 'LOC'}]
             if locations:
-                return ', '.join(dict.fromkeys(locations))
+                return normalize_location_text(', '.join(dict.fromkeys(locations)))
         return None
 
     def _get_nlp(self):
@@ -328,7 +340,7 @@ class JobDescriptionParser:
         text_lower = text.lower()
         for item in self.employment_types:
             if re.search(r'\b' + re.escape(item) + r'\b', text_lower):
-                return item.title()
+                return normalize_employment_type(item)
         return None
 
     def extract_experience_level(self, text: str) -> Optional[str]:
@@ -336,17 +348,17 @@ class JobDescriptionParser:
         # First try to match a known seniority label (e.g. 'senior', 'junior') from experience_levels vocabulary
         for item in self.experience_levels:
             if re.search(r'\b' + re.escape(item) + r'\b', text_lower):
-                return item.title()
+                return normalize_experience_level(item)
         # Fallback: infer level from years of experience mentioned in the JD
         # Modify the year thresholds here if the mapping feels off for your domain
         years_match = re.search(r'(\d+)\s*[-+]?\s*years?\s*(?:of)?\s*experience', text, re.IGNORECASE)
         if years_match:
             years = int(years_match.group(1))
             if years <= 2:
-                return 'Entry Level'
+                return normalize_experience_level('entry level')
             if years <= 5:
-                return 'Mid Level'
-            return 'Senior Level'
+                return normalize_experience_level('mid level')
+            return normalize_experience_level('senior')
         return None  # No level detected; matcher will treat job as mid-level by default
 
     def extract_salary_range(self, text: str) -> Optional[str]:
@@ -368,21 +380,38 @@ class JobDescriptionParser:
 
     def extract_skills(self, text: str) -> tuple[list[str], list[str]]:
         text_lower = text.lower()
-        all_skills = sorted(self.tech_skills.union(self.soft_skills))
-        required = []
-        preferred = []
-        for skill in all_skills:
-            pattern = r'\b' + re.escape(skill) + r'\b'  # Word-boundary match to avoid partial hits (e.g. 'r' matching 'ruby')
-            if not re.search(pattern, text_lower):
-                continue
-            occurrences = [match.start() for match in re.finditer(pattern, text_lower)]
-            # Check the surrounding text for preferred-context words like 'nice to have'
-            # See _is_preferred_context() to change what counts as 'preferred'
-            if any(self._is_preferred_context(text_lower, index, len(skill)) for index in occurrences):
-                preferred.append(skill.title())
-            else:
-                required.append(skill.title())
-        return sorted(set(required)), sorted(set(preferred) - set(required))
+        required_section_text = self._join_section_texts(
+            text,
+            [
+                ['requirements', 'minimum requirements', 'required skills', 'skills required'],
+                ['qualifications', 'minimum qualifications', 'must have'],
+            ],
+            ['preferred qualifications', 'preferred skills', 'nice to have', 'bonus', 'benefits', 'responsibilities'],
+        )
+        preferred_section_text = self._join_section_texts(
+            text,
+            [
+                ['preferred qualifications', 'preferred skills', 'desired skills'],
+                ['nice to have', 'bonus', 'plus'],
+            ],
+            ['requirements', 'minimum requirements', 'responsibilities', 'benefits'],
+        )
+
+        required = extract_canonical_skills(required_section_text) if required_section_text else []
+        preferred = extract_canonical_skills(preferred_section_text) if preferred_section_text else []
+
+        if not required and not preferred:
+            all_skills = extract_canonical_skills(text)
+            for skill in all_skills:
+                occurrences = [match.start() for match in re.finditer(re.escape(skill.lower()), text_lower)]
+                if any(self._is_preferred_context(text_lower, index, len(skill)) for index in occurrences):
+                    preferred.append(skill)
+                else:
+                    required.append(skill)
+
+        required = normalize_list_text(required)
+        preferred = [skill for skill in normalize_list_text(preferred) if skill not in required]
+        return required, preferred
 
     def extract_responsibilities(self, text: str) -> list[str]:
         return self._extract_section_items(text, ['responsibilities', 'duties', 'what you will do'], limit=10)
@@ -418,6 +447,22 @@ class JobDescriptionParser:
 
     def extract_education_requirements(self, text: str) -> list[str]:
         keywords = ['education', 'degree', 'bachelor', 'master', 'phd', 'diploma']
+        section_text = self._join_section_texts(
+            text,
+            [
+                ['education', 'educational requirements'],
+                ['qualifications', 'requirements', 'minimum qualifications'],
+            ],
+            ['responsibilities', 'benefits', 'preferred qualifications'],
+        )
+        if section_text:
+            lines = []
+            for sentence in re.split(r'[.!?\n]', section_text):
+                candidate = ' '.join(sentence.split())
+                if any(keyword in candidate.lower() for keyword in keywords) and 10 < len(candidate) < 160:
+                    lines.append(candidate)
+            if lines:
+                return lines[:5]
         lines = []
         for sentence in re.split(r'[.!?\n]', text):
             candidate = ' '.join(sentence.split())
@@ -486,6 +531,14 @@ class JobDescriptionParser:
             return ''
         return self._collect_section_lines(lines[start_index:], stop_names)
 
+    def _join_section_texts(self, text: str, section_groups: list[list[str]], stop_names: list[str]) -> str:
+        sections = []
+        for section_names in section_groups:
+            section_text = self._extract_named_section_text(text, section_names, stop_names)
+            if section_text:
+                sections.append(section_text)
+        return '\n'.join(sections).strip()
+
     def _collect_section_lines(self, lines: list[str], stop_names: list[str]) -> str:
         collected = []
         for line in lines:
@@ -550,50 +603,10 @@ class JobDescriptionParser:
         return any(marker in context for marker in ['preferred', 'nice to have', 'bonus', 'plus', 'desired'])
 
     def _load_tech_skills(self) -> set[str]:
-        return {
-            'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'ruby', 'go', 'rust',
-            'html', 'css', 'react', 'angular', 'vue', 'node.js', 'express', 'django', 'flask',
-            'sql', 'mongodb', 'postgresql', 'mysql', 'redis', 'aws', 'azure', 'gcp',
-            'docker', 'kubernetes', 'jenkins', 'terraform', 'git', 'linux', 'machine learning',
-            'deep learning', 'ai', 'data science', 'data analysis', 'tableau', 'power bi',
-            'agile', 'scrum', 'devops', 'rest api', 'graphql', 'microservices', 'kotlin',
-            'swift', 'flutter',
-            # IT / CS domain — broader terms for IT-focused and education-track JDs
-            'programming', 'software development', 'information technology', 'computer science',
-            'networking', 'computer hardware', 'database management', 'systems analysis',
-            # Python-specific skills — Python instructor and developer roles
-            'object-oriented programming', 'oop', 'unit testing', 'debugging',
-            'virtual environment', 'web development', 'backend development', 'full stack development',
-            # Cybersecurity domain — for cybersecurity faculty and specialist roles
-            'cybersecurity', 'network security', 'information security', 'ethical hacking',
-            'penetration testing', 'cryptography', 'security operations', 'vulnerability assessment',
-            # IT professional experience / qualification — CS/IT faculty and consultant roles
-            'it consultancy', 'it certification', 'technical consulting', 'applied research',
-            'e-learning', 'lms',
-        }
+        return set(get_canonical_skills('hard'))
 
     def _load_soft_skills(self) -> set[str]:
-        return {
-            'communication', 'teamwork', 'leadership', 'problem solving', 'critical thinking',
-            'time management', 'adaptability', 'creativity', 'collaboration', 'decision making',
-            # Academic / teaching domain — keep in sync with _SKILL_VOCAB in matcher.py and _load_common_skills in resume_parser.py
-            'teaching', 'instruction', 'curriculum development', 'course design',
-            'research', 'lecturing', 'academic writing', 'mentoring',
-            'laboratory supervision', 'thesis supervision',
-            # Pedagogical / instructional skills — key differentiators for teaching roles
-            'lesson planning', 'classroom management', 'student engagement',
-            'instructional design', 'course facilitation', 'learning management', 'student discipline',
-            # Faculty / academic professional skills — CS/IT Faculty JD requirements
-            'student assessment', 'student evaluation', 'academic advising', 'career guidance',
-            'seminar facilitation', 'laboratory instruction',
-            'professional development', 'faculty development', 'online learning', 'online course development',
-            # Technology in education — Cybersecurity/CS Faculty JD requirements
-            'educational technology', 'ai integration', 'digital transformation',
-            'blended learning', 'technology-enhanced learning', 'interpersonal skills',
-            # Instructor coaching skills — Python Programming Instructor JD requirements
-            'coaching', 'constructive feedback', 'presentation skills',
-            'project-based learning', 'student reporting',
-        }
+        return set(get_canonical_skills('soft'))
 
     def _load_employment_types(self) -> set[str]:
         return {'full-time', 'part-time', 'contract', 'temporary', 'internship', 'hybrid', 'remote', 'onsite',

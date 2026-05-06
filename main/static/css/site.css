@@ -482,6 +482,10 @@ body { background-color: #f8fafc; color: #212529; }
   border: 1px solid rgba(15, 23, 42, 0.04);
 }
 
+.db-main-section > .db-table-card + .db-table-card {
+  margin-top: 32px;
+}
+
 .db-table-toolbar {
   display: flex;
   justify-content: space-between;
@@ -1134,6 +1138,89 @@ body { background-color: #f8fafc; color: #212529; }
   font-size: 0.93rem;
   line-height: 1.65;
   color: #334155;
+}
+
+.db-dialog {
+  width: min(100%, 680px);
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.db-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.db-dialog-shell {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.db-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.db-dialog-title {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.db-dialog-subtitle {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.db-dialog-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fbff;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.db-dialog-close:hover {
+  background: #eef4fb;
+}
+
+.db-dialog-content {
+  padding: 18px 22px 22px;
+}
+
+.db-contact-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.db-contact-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 14px;
+}
+
+.db-contact-action {
+  margin-left: 0;
+}
+
+.db-contact-action[aria-disabled='true'] {
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .db-job-detail-head {

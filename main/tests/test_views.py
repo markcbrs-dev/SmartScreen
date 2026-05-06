@@ -504,6 +504,37 @@ class JobUploadTests(TestCase):
 		self.assertEqual(JobDescription.objects.count(), 0)
 		self.assertContains(response, 'Uploaded job description removed.')
 
+	def test_dashboard_renders_contact_dialog_actions_in_status_tab(self):
+		Applicant.objects.create(
+			first_name='Avery',
+			last_name='Santos',
+			contact_number='+63 912 000 1122',
+			email='avery@example.com',
+			position='Backend Engineer',
+			status='INTERVIEW',
+			resume=build_docx_file(
+				'avery.docx',
+				[
+					'Avery Santos',
+					'avery@example.com',
+					'+63 912 000 1122',
+				],
+			),
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'id="contactDialog"', html=False)
+		self.assertContains(response, 'class="db-btn-contact js-open-contact-dialog"', html=False)
+		self.assertContains(response, 'data-contact-email="avery@example.com"', html=False)
+		self.assertContains(response, 'data-contact-phone="+63 912 000 1122"', html=False)
+		self.assertContains(response, 'id="contactDialogEmailAction"', html=False)
+		self.assertNotContains(response, 'id="contactDialogPhoneAction"', html=False)
+		self.assertContains(response, 'https://mail.google.com/mail/?', html=False)
+		self.assertContains(response, 'Open Email', html=False)
+		self.assertNotContains(response, 'Call Number', html=False)
+
 	def test_dashboard_removes_applicant_from_status_tab(self):
 		applicant = Applicant.objects.create(
 			first_name='Delete',

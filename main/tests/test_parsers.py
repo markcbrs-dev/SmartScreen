@@ -68,6 +68,35 @@ class ResumeParserNerTests(SimpleTestCase):
         self.assertEqual(full_name, 'Barack Obama')
 
 
+class ResumeParserExtractionTests(SimpleTestCase):
+    def test_extract_skills_normalizes_common_aliases(self):
+        parser = ResumeParser()
+
+        skills = parser.extract_skills('Worked with Postgres, JS, OOP, RESTful API, and ML systems.')
+
+        self.assertIn('PostgreSQL', skills)
+        self.assertIn('JavaScript', skills)
+        self.assertIn('Object-Oriented Programming', skills)
+        self.assertIn('REST API', skills)
+        self.assertIn('Machine Learning', skills)
+
+    def test_extract_education_prefers_education_section_over_keyword_noise(self):
+        parser = ResumeParser()
+
+        education = parser.extract_education(
+            'Experience\n'
+            'Worked on school enrollment systems as a software engineer\n\n'
+            'Education\n'
+            'Bachelor of Science in Computer Science\n'
+            'Example University\n\n'
+            'Skills\n'
+            'Python, Django\n'
+        )
+
+        self.assertIn('Bachelor of Science in Computer Science', education)
+        self.assertNotIn('Worked on school enrollment systems as a software engineer', education)
+
+
 class JobDescriptionParserNerTests(SimpleTestCase):
     def test_extract_company_uses_org_entity_when_no_company_header_exists(self):
         parser = JobDescriptionParser()
@@ -106,3 +135,30 @@ class JobDescriptionParserNerTests(SimpleTestCase):
 
         self.assertEqual(company, 'Google')
         self.assertEqual(location, 'London')
+
+
+class JobDescriptionParserExtractionTests(SimpleTestCase):
+    def test_extract_skills_uses_required_and_preferred_sections_with_aliases(self):
+        parser = JobDescriptionParser()
+
+        required, preferred = parser.extract_skills(
+            'Requirements\n'
+            '- Strong JS and Postgres experience\n'
+            '- RESTful API development\n\n'
+            'Preferred Qualifications\n'
+            '- Kubernetes\n'
+            '- Communication\n'
+        )
+
+        self.assertIn('JavaScript', required)
+        self.assertIn('PostgreSQL', required)
+        self.assertIn('REST API', required)
+        self.assertIn('Kubernetes', preferred)
+        self.assertIn('Communication', preferred)
+
+    def test_extract_experience_level_normalizes_year_based_fallback(self):
+        parser = JobDescriptionParser()
+
+        level = parser.extract_experience_level('Candidates must have 6 years of experience building backend systems.')
+
+        self.assertEqual(level, 'senior')

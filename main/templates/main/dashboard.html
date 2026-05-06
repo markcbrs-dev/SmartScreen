@@ -142,16 +142,25 @@
           <div class="db-table-toolbar">
             <div>
               <h2 class="db-section-title">Applicant Directory</h2>
-              <p class="db-section-copy">Review submissions, inspect extracted skills, and open uploaded resumes.</p>
             </div>
             <div class="db-search-box">
               <i class="bi bi-search"></i>
               <input type="text" id="searchInput" placeholder="Search applicants" class="db-search-input">
             </div>
           </div>
+        </section>
+
+        {% for applicant_group in applicant_position_groups %}
+        <section class="db-table-card db-position-group-card">
+          <div class="db-table-toolbar">
+            <div>
+              <h2 class="db-section-title">{{ applicant_group.group_title }}</h2>
+            </div>
+            <div class="db-uploaded-jobs-count">{{ applicant_group.applicants|length }} applicant{{ applicant_group.applicants|length|pluralize }}</div>
+          </div>
 
           <div class="table-responsive">
-            <table class="table db-table mb-0" id="applicantsTable">
+            <table class="table db-table mb-0 applicantsTable">
               <thead>
                 <tr>
                   <th class="db-rank-col">#</th>
@@ -164,7 +173,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for a in applicants %}
+                {% for a in applicant_group.applicants %}
                 <tr>
                   <td class="db-rank-col">
                     {% if a.rank == 1 %}
@@ -173,6 +182,20 @@
                       <span class="db-rank-badge db-rank-silver" title="Rank #2">&#x1F948;</span>
                     {% elif a.rank == 3 %}
                       <span class="db-rank-badge db-rank-bronze" title="Rank #3">&#x1F949;</span>
+                    {% elif a.rank == 4 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #4">4&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 5 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #5">5&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 6 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #6">6&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 7 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #7">7&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 8 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #8">8&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 9 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #9">9&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 10 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #10">&#x1F51F;</span>
                     {% else %}
                       <span class="db-rank-badge db-rank-num">#{{ a.rank }}</span>
                     {% endif %}
@@ -229,13 +252,18 @@
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="7" class="text-center text-muted py-4">No applicants yet.</td>
+                  <td colspan="7" class="text-center text-muted py-4">No applicants for this position yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </section>
+        {% empty %}
+        <section class="db-table-card">
+          <div class="text-center text-muted py-4">No applicants yet.</div>
+        </section>
+        {% endfor %}
       </section>
 
       <!-- STATUS PANEL -->
@@ -244,16 +272,25 @@
           <div class="db-table-toolbar">
             <div>
               <h2 class="db-section-title">Status</h2>
-              <p class="db-section-copy">All applicants appear here. Use the available actions based on each applicant's current status.</p>
             </div>
             <div class="db-search-box">
               <i class="bi bi-search"></i>
               <input type="text" id="interviewSearchInput" placeholder="Search" class="db-search-input">
             </div>
           </div>
+        </section>
+
+        {% for interview_group in interview_position_groups %}
+        <section class="db-table-card db-status-group-card">
+          <div class="db-table-toolbar">
+            <div>
+              <h2 class="db-section-title">{{ interview_group.group_title }}</h2>
+            </div>
+            <div class="db-uploaded-jobs-count">{{ interview_group.applicants|length }} applicant{{ interview_group.applicants|length|pluralize }}</div>
+          </div>
 
           <div class="table-responsive">
-            <table class="table db-table mb-0" id="interviewTable">
+            <table class="table db-table mb-0 interviewTable">
               <thead>
                 <tr>
                   <th class="db-rank-col">#</th>
@@ -265,7 +302,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for a in interview_applicants %}
+                {% for a in interview_group.applicants %}
                 <tr>
                   <td class="db-rank-col">
                     {% if a.rank == 1 %}
@@ -274,6 +311,20 @@
                       <span class="db-rank-badge db-rank-silver" title="Rank #2">&#x1F948;</span>
                     {% elif a.rank == 3 %}
                       <span class="db-rank-badge db-rank-bronze" title="Rank #3">&#x1F949;</span>
+                    {% elif a.rank == 4 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #4">4&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 5 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #5">5&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 6 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #6">6&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 7 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #7">7&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 8 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #8">8&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 9 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #9">9&#xFE0F;&#x20E3;</span>
+                    {% elif a.rank == 10 %}
+                      <span class="db-rank-badge db-rank-num" title="Rank #10">&#x1F51F;</span>
                     {% else %}
                       <span class="db-rank-badge db-rank-num">#{{ a.rank }}</span>
                     {% endif %}
@@ -299,13 +350,19 @@
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
                   <td class="db-actions-cell">
                     {% if a.status == 'NEW' %}
-                      <a
-                        href="mailto:{{ a.email }}?subject=Application%20Follow-up%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20would%20like%20to%20connect%20with%20you%20regarding%20your%20application%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
-                        class="db-btn-contact"
+                      <button
+                        type="button"
+                        class="db-btn-contact js-open-contact-dialog"
                         title="Contact {{ a.email }}"
+                        data-contact-name="{{ a.first_name }} {{ a.last_name }}"
+                        data-contact-email="{{ a.email }}"
+                        data-contact-phone="{{ a.contact_number|default:'' }}"
+                        data-contact-position="{{ a.position|default:'Applicant' }}"
+                        data-contact-subject="Application Follow-up - {{ a.position|default:'Applicant' }}"
+                        data-contact-body="Dear {{ a.first_name }},&#10;&#10;We would like to connect with you regarding your application for the {{ a.position|default:'Applicant' }} position.&#10;&#10;Please reply to this email to confirm your availability.&#10;&#10;Thank you,&#10;SmartScreen HR Team"
                       >
                         <i class="bi bi-envelope-fill"></i> Contact
-                      </a>
+                      </button>
                       <form method="post" class="db-inline-form" style="margin-top:6px">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="update_applicant_status">
@@ -317,13 +374,19 @@
                         </button>
                       </form>
                     {% elif a.status == 'INTERVIEW' %}
-                      <a
-                        href="mailto:{{ a.email }}?subject=Interview%20Invitation%20%E2%80%93%20{{ a.position|urlencode }}&body=Dear%20{{ a.first_name }}%2C%0A%0AWe%20are%20pleased%20to%20invite%20you%20for%20an%20interview%20for%20the%20{{ a.position|urlencode }}%20position.%0A%0APlease%20reply%20to%20this%20email%20to%20confirm%20your%20availability.%0A%0AThank%20you%2C%0ASmartScreen%20HR%20Team"
-                        class="db-btn-contact"
+                      <button
+                        type="button"
+                        class="db-btn-contact js-open-contact-dialog"
                         title="Send interview invitation to {{ a.email }}"
+                        data-contact-name="{{ a.first_name }} {{ a.last_name }}"
+                        data-contact-email="{{ a.email }}"
+                        data-contact-phone="{{ a.contact_number|default:'' }}"
+                        data-contact-position="{{ a.position|default:'Applicant' }}"
+                        data-contact-subject="Interview Invitation - {{ a.position|default:'Applicant' }}"
+                        data-contact-body="Dear {{ a.first_name }},&#10;&#10;We are pleased to invite you for an interview for the {{ a.position|default:'Applicant' }} position.&#10;&#10;Please reply to this email to confirm your availability.&#10;&#10;Thank you,&#10;SmartScreen HR Team"
                       >
                         <i class="bi bi-envelope-fill"></i> Contact
-                      </a>
+                      </button>
                       <form method="post" class="db-inline-form" style="margin-top:6px">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="update_applicant_status">
@@ -355,6 +418,53 @@
             </table>
           </div>
         </section>
+        {% empty %}
+        <section class="db-table-card">
+          <div class="text-center text-muted py-4">No applicants yet.</div>
+        </section>
+        {% endfor %}
+
+        <dialog class="db-dialog" id="contactDialog">
+          <div class="db-dialog-shell db-contact-dialog-shell">
+            <div class="db-dialog-header">
+              <div>
+                <h3 class="db-dialog-title" id="contactDialogTitle">Contact Applicant</h3>
+                <p class="db-dialog-subtitle" id="contactDialogSubtitle">Choose how you want to contact this applicant.</p>
+              </div>
+              <button
+                type="button"
+                class="db-dialog-close js-close-contact-dialog"
+                aria-label="Close contact dialog"
+              >
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="db-dialog-content">
+              <div class="db-job-detail-meta db-contact-detail-grid">
+                <div class="db-job-detail-meta-item">
+                  <span class="db-job-detail-meta-label">Email</span>
+                  <div class="db-job-detail-meta-value" id="contactDialogEmail">Not available</div>
+                </div>
+                <div class="db-job-detail-meta-item">
+                  <span class="db-job-detail-meta-label">Phone</span>
+                  <div class="db-job-detail-meta-value" id="contactDialogPhone">Not available</div>
+                </div>
+              </div>
+              <div class="db-contact-dialog-actions">
+                <a href="#" class="db-btn-contact db-contact-action" id="contactDialogEmailAction">
+                  <i class="bi bi-envelope-fill"></i> Open Email
+                </a>
+                <button type="button" class="db-btn-resume db-contact-action" id="contactDialogCopyEmailAction">
+                  <i class="bi bi-copy"></i> Copy Email
+                </button>
+                <button type="button" class="db-btn-resume db-contact-action" id="contactDialogCopyPhoneAction">
+                  <i class="bi bi-copy"></i> Copy Phone
+                </button>
+              </div>
+              <p class="db-dialog-text" id="contactDialogHint">Use these quick actions to contact the selected applicant.</p>
+            </div>
+          </div>
+        </dialog>
       </section>
 
       <section class="db-main-section" id="activeJobsSection" hidden>
@@ -595,7 +705,144 @@
   const activeJobsToggle = document.getElementById('activeJobsToggle');
   const interviewToggle = document.getElementById('interviewToggle');
   const dashboardLink = document.querySelector("a[href='{% url 'dashboard' %}']");
+  const contactDialog = document.getElementById('contactDialog');
+  const contactDialogTitle = document.getElementById('contactDialogTitle');
+  const contactDialogSubtitle = document.getElementById('contactDialogSubtitle');
+  const contactDialogEmail = document.getElementById('contactDialogEmail');
+  const contactDialogPhone = document.getElementById('contactDialogPhone');
+  const contactDialogEmailAction = document.getElementById('contactDialogEmailAction');
+  const contactDialogCopyEmailAction = document.getElementById('contactDialogCopyEmailAction');
+  const contactDialogCopyPhoneAction = document.getElementById('contactDialogCopyPhoneAction');
+  const contactDialogHint = document.getElementById('contactDialogHint');
   const currentUrl = new URL(window.location.href);
+
+  function setActionAvailability(element, enabled) {
+    if (!element) {
+      return;
+    }
+
+    if (element.tagName === 'A') {
+      element.setAttribute('aria-disabled', String(!enabled));
+      if (!enabled) {
+        element.setAttribute('tabindex', '-1');
+      } else {
+        element.removeAttribute('tabindex');
+      }
+      return;
+    }
+
+    element.disabled = !enabled;
+  }
+
+  function buildGmailComposeHref(email, subject, body) {
+    const params = new URLSearchParams();
+    params.set('view', 'cm');
+    params.set('fs', '1');
+    params.set('to', email);
+    if (subject) {
+      params.set('su', subject);
+    }
+    if (body) {
+      params.set('body', body);
+    }
+    return 'https://mail.google.com/mail/?' + params.toString();
+  }
+
+  function copyContactValue(value, label) {
+    if (!value || !navigator.clipboard || !navigator.clipboard.writeText) {
+      if (contactDialogHint) {
+        contactDialogHint.textContent = label + ' is not available to copy.';
+      }
+      return;
+    }
+
+    navigator.clipboard.writeText(value).then(function () {
+      if (contactDialogHint) {
+        contactDialogHint.textContent = label + ' copied to clipboard.';
+      }
+    }).catch(function () {
+      if (contactDialogHint) {
+        contactDialogHint.textContent = 'Unable to copy ' + label.toLowerCase() + '.';
+      }
+    });
+  }
+
+  document.querySelectorAll('.js-open-contact-dialog').forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (!contactDialog) {
+        return;
+      }
+
+      const contactName = button.dataset.contactName || 'Applicant';
+      const contactEmailValue = button.dataset.contactEmail || '';
+      const contactPhoneValue = button.dataset.contactPhone || '';
+      const contactPosition = button.dataset.contactPosition || 'Applicant';
+      const contactSubject = button.dataset.contactSubject || '';
+      const contactBody = button.dataset.contactBody || '';
+
+      if (contactDialogTitle) {
+        contactDialogTitle.textContent = 'Contact ' + contactName;
+      }
+      if (contactDialogSubtitle) {
+        contactDialogSubtitle.textContent = contactPosition;
+      }
+      if (contactDialogEmail) {
+        contactDialogEmail.textContent = contactEmailValue || 'Not available';
+      }
+      if (contactDialogPhone) {
+        contactDialogPhone.textContent = contactPhoneValue || 'Not available';
+      }
+      if (contactDialogEmailAction) {
+        contactDialogEmailAction.href = contactEmailValue ? buildGmailComposeHref(contactEmailValue, contactSubject, contactBody) : '#';
+        setActionAvailability(contactDialogEmailAction, Boolean(contactEmailValue));
+      }
+      setActionAvailability(contactDialogCopyEmailAction, Boolean(contactEmailValue));
+      setActionAvailability(contactDialogCopyPhoneAction, Boolean(contactPhoneValue));
+
+      if (contactDialogCopyEmailAction) {
+        contactDialogCopyEmailAction.onclick = function () {
+          copyContactValue(contactEmailValue, 'Email');
+        };
+      }
+      if (contactDialogCopyPhoneAction) {
+        contactDialogCopyPhoneAction.onclick = function () {
+          copyContactValue(contactPhoneValue, 'Phone number');
+        };
+      }
+      if (contactDialogHint) {
+        contactDialogHint.textContent = 'Use these quick actions to contact the selected applicant.';
+      }
+
+      contactDialog.showModal();
+    });
+  });
+
+  document.querySelectorAll('.js-close-contact-dialog').forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (contactDialog) {
+        contactDialog.close();
+      }
+    });
+  });
+
+  if (contactDialogEmailAction) {
+    contactDialogEmailAction.addEventListener('click', function (event) {
+      const href = contactDialogEmailAction.getAttribute('href');
+      const disabled = contactDialogEmailAction.getAttribute('aria-disabled') === 'true';
+
+      if (!href || href === '#' || disabled) {
+        event.preventDefault();
+        return;
+      }
+
+      if (contactDialog) {
+        contactDialog.close();
+      }
+
+      window.location.href = href;
+      event.preventDefault();
+    });
+  }
 
   // Controls which main content panel is visible.
   // panel values: 'dashboard' | 'jobs' | 'interview'
@@ -671,15 +918,31 @@
 
   document.getElementById('searchInput').addEventListener('input', function () {
     const val = this.value.toLowerCase();
-    document.querySelectorAll('#applicantsTable tbody tr').forEach(function (row) {
-      row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    document.querySelectorAll('.db-position-group-card').forEach(function (card) {
+      let hasVisibleRow = false;
+
+      card.querySelectorAll('.applicantsTable tbody tr').forEach(function (row) {
+        const matches = row.textContent.toLowerCase().includes(val);
+        row.style.display = matches ? '' : 'none';
+        hasVisibleRow = hasVisibleRow || matches;
+      });
+
+      card.hidden = !hasVisibleRow;
     });
   });
 
   document.getElementById('interviewSearchInput').addEventListener('input', function () {
     const val = this.value.toLowerCase();
-    document.querySelectorAll('#interviewTable tbody tr').forEach(function (row) {
-      row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    document.querySelectorAll('.db-status-group-card').forEach(function (card) {
+      let hasVisibleRow = false;
+
+      card.querySelectorAll('.interviewTable tbody tr').forEach(function (row) {
+        const matches = row.textContent.toLowerCase().includes(val);
+        row.style.display = matches ? '' : 'none';
+        hasVisibleRow = hasVisibleRow || matches;
+      });
+
+      card.hidden = !hasVisibleRow;
     });
   });
 
