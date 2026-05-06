@@ -246,7 +246,14 @@ def login_view(request):
             messages.success(request, 'Logged in successfully.')
             return redirect('dashboard')
         else:
-            messages.error(request, 'Wrong Email or Password')
+            email = request.POST.get('username', '').strip()
+            password = request.POST.get('password', '')
+            pending_user = User.objects.filter(username=email, is_active=False, is_staff=True).first()
+
+            if pending_user and password and pending_user.check_password(password):
+                messages.error(request, 'Wait for Admin approval.')
+            else:
+                messages.error(request, 'Wrong Email or Password')
     else:
         form = AuthenticationForm()
     return render(request, 'main/hr_login.html', {'form': form})
