@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}SmartScreen Home{% endblock %}
+
+{% block body_attrs %} class="db-body"{% endblock %}
+
+{% block navbar %}
+<nav class="db-topnav">
+  <div class="db-topnav-inner">
+    <div class="d-flex align-items-center gap-3">
+      <img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="db-brand-logo">
+      <div class="db-brand-text">SMARTSCREEN</div>
+    </div>
+  </div>
+</nav>
+{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --home-blue: #1f6fd6;
+    --home-blue-dark: #124f9c;
+    --home-sand: #f4efe3;
+    --home-ink: #132238;
+    --home-muted: #5f6f82;
+    --home-line: rgba(19, 34, 56, 0.12);
+  }
+
+  .home-shell {
+    min-height: calc(100vh - 88px);
+    display: grid;
+    place-items: center;
+    padding: 32px 0 48px;
+    width: min(1080px, 100%);
+  }
+
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 360px));
+    justify-content: center;
+    gap: 18px;
+    width: min(860px, 100%);
+    margin: 0 auto;
+    padding: 0 44px 44px;
+  }
+
+  .home-card {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 28px;
+    border-radius: 24px;
+    text-decoration: none;
+    border: 1px solid var(--home-line);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    min-height: 260px;
+  }
+
+  .home-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 22px 38px rgba(19, 34, 56, 0.10);
+    border-color: rgba(31, 111, 214, 0.22);
+  }
+
+  .home-card-applicant {
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    color: var(--home-ink);
+  }
+
+  .home-card-hr {
+    background: linear-gradient(180deg, var(--home-sand) 0%, #fffaf1 100%);
+    color: var(--home-ink);
+  }
+
+  .home-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    background: rgba(31, 111, 214, 0.10);
+    color: var(--home-blue-dark);
+  }
+
+  .home-icon i {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .home-card-hr .home-icon {
+    background: rgba(19, 34, 56, 0.08);
+    color: #7b4e15;
+  }
+
+  .home-card h2 {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 800;
+  }
+
+  .home-card p {
+    margin: 0;
+    color: var(--home-muted);
+    line-height: 1.65;
+  }
+
+  .home-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;
+    font-weight: 700;
+    color: var(--home-blue-dark);
+  }
+
+  .home-card-hr .home-cta {
+    color: #7b4e15;
+  }
+
+  @media (max-width: 900px) {
+    .home-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .home-grid {
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+
+    .home-grid {
+      padding-bottom: 24px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="home-shell">
+  <div class="home-grid">
+    <a class="home-card home-card-applicant" href="{% url 'apply' %}">
+      <div class="home-icon"><i class="bi bi-person-badge-fill" aria-hidden="true"></i></div>
+      <h2>Applicant</h2>
+      <p>Choose target position, review the job description, and submit an application.</p>
+      <span class="home-cta">Continue as Applicant <span aria-hidden="true">&rarr;</span></span>
+    </a>
+
+    <a class="home-card home-card-hr" href="{% url 'login' %}">
+      <div class="home-icon"><i class="bi bi-briefcase-fill" aria-hidden="true"></i></div>
+      <h2>HR</h2>
+      <p>Upload Job Descriptions, and manage applicants.</p>
+      <span class="home-cta">Continue as HR <span aria-hidden="true">&rarr;</span></span>
+    </a>
+  </div>
+</section>
+{% endblock %}

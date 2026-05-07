@@ -52,10 +52,14 @@ def build_workspace_file(name: str) -> SimpleUploadedFile:
 
 
 class ApplicantFlowTests(TestCase):
-	def test_home_redirects_to_apply_page(self):
+	def test_home_shows_role_selection_links(self):
 		response = self.client.get(reverse('home'))
 
-		self.assertRedirects(response, reverse('apply'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Continue as Applicant')
+		self.assertContains(response, 'Continue as HR')
+		self.assertContains(response, reverse('apply'))
+		self.assertContains(response, reverse('login'))
 
 	def test_apply_page_shows_uploaded_job_description_without_auto_match_option(self):
 		job = replace_active_job_description(build_text_file(

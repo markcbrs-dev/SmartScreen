@@ -10,7 +10,7 @@ HOW TO MODIFY
 
 CURRENT ROUTES
 --------------
-  /             → redirects to /apply/
+  /             → role-selection home page
   /login/       → HR login form
   /logout/      → HR logout (POST only)
   /apply/       → public applicant submission form
@@ -20,11 +20,11 @@ CURRENT ROUTES
 """
 
 from django.urls import path
-from django.views.generic import RedirectView
 from . import views
 
 urlpatterns = [
-    path("", RedirectView.as_view(pattern_name='apply', permanent=False), name="home"),
+    path("", views.home_view, name="home"),
+    path("home/", views.home_view, name="home_alias"),
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
     path("apply/", views.apply, name="apply"),

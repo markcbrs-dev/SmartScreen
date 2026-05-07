@@ -23,6 +23,7 @@ HOW TO MODIFY
 
 VIEWS IN THIS FILE
 ------------------
+    home_view      — public landing page where users choose Applicant or HR
   login_view      — HR login form (GET/POST)
   hr_register     — HR self-registration; account starts inactive until admin approves
   logout_view     — POST-only logout
@@ -236,6 +237,10 @@ def _get_job_display_text(job: JobDescription) -> str:
 # To change session duration, edit request.session.set_expiry() in login_view.
 # To change approval behaviour, see is_active=False in hr_register.
 # -----------------------------------------------------------------------
+def home_view(request):
+    return render(request, 'main/home.html')
+
+
 def login_view(request):
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
