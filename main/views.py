@@ -51,8 +51,11 @@ import re
 from .models import Applicant, JobDescription
 import os
 from django.contrib.auth.decorators import login_required, user_passes_test
+from .services.job_parser import JobDescriptionParser
+from .services.skills import normalize_employment_type
 
 _staff_required = user_passes_test(lambda u: u.is_active and u.is_staff, login_url='login')
+_job_description_parser = JobDescriptionParser()
 
 from .services import (
     extract_about_job_onward_text,
@@ -332,11 +335,17 @@ def dashboard(request):
                 return redirect_to_dashboard('jobs')
 
             try:
-                job = replace_active_job_description(uploaded_job_file)
+                job_result = replace_active_job_description(uploaded_job_file)
             except ValueError as exc:
                 messages.error(request, str(exc))
             else:
-                messages.success(request, f'Uploaded job description: {job.title}.')
+                if isinstance(job_result, list):
+                    titles = ', '.join(job.title for job in job_result[:3])
+                    if len(job_result) > 3:
+                        titles = f'{titles}, ...'
+                    messages.success(request, f'Uploaded {len(job_result)} job descriptions: {titles}.')
+                else:
+                    messages.success(request, f'Uploaded job description: {job_result.title}.')
             return redirect_to_dashboard('jobs')
 
         if action == 'remove_job_description':
@@ -384,7 +393,10 @@ def dashboard(request):
 
     jobs = get_active_job_descriptions()
     for job in jobs:
+        job.employment_type = normalize_employment_type(job.employment_type) or ''
         job.display_text = _get_job_display_text(job)
+        if not getattr(job, 'reporting_to', ''):
+            job.reporting_to = _job_description_parser.extract_reporting_to(job.display_text)
         job.description_text = extract_job_description_section(job.display_text)
         job.description_preview_text = extract_description_preview_text(job.display_text)
         job.description_preview_sections = _build_description_preview_sections(extract_about_job_onward_text(job.display_text))
@@ -495,6 +507,8 @@ def audit_log_view(request):
 # -----------------------------------------------------------------------
 def apply(request):
     available_jobs = get_active_job_descriptions()
+    for job in available_jobs:
+        job.employment_type = normalize_employment_type(job.employment_type) or ''
     active_job = available_jobs[0] if available_jobs else None
     if active_job is not None:
         active_job.display_text = _get_job_display_text(active_job)

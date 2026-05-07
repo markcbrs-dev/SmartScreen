@@ -49,7 +49,7 @@ FUNCTIONS IN THIS FILE
 import os
 from functools import lru_cache
 
-from django.core.files.base import File
+from django.core.files.base import ContentFile, File
 
 from main.models import JobDescription
 
@@ -84,7 +84,7 @@ def parse_resume_upload(file_obj) -> ResumeProfile:
     return get_resume_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
-def parse_job_upload(file_obj) -> JobProfile:
+def parse_job_upload(file_obj) -> JobProfile | list[JobProfile]:
     return get_job_parser().parse(file_obj, filename=getattr(file_obj, 'name', None))
 
 
@@ -125,19 +125,32 @@ def _delete_job_description(job: JobDescription) -> None:
     job.delete()
 
 
-def replace_active_job_description(file_obj) -> JobDescription:
-    profile = parse_job_upload(file_obj)  # Parse file → JobProfile (structured fields)
-    filename = os.path.basename(getattr(file_obj, 'name', '') or 'uploaded-job-description.txt')
-    # Title resolution priority: parsed title → filename stem → generic fallback
-    resolved_title = profile.title or os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ').strip() or 'Uploaded Job Description'
-
+def _build_saved_job(file_name: str, file_bytes: bytes, profile: JobProfile, title_fallback: str, suffix: str = '') -> JobDescription:
+    resolved_title = profile.title or title_fallback or 'Uploaded Job Description'
     job = JobDescription(title=resolved_title)
-    if hasattr(file_obj, 'seek'):
-        file_obj.seek(0)  # Rewind because parse_job_upload() already read the file
-    job.description_file.save(f'jobs/{filename}', File(file_obj), save=False)  # save=False: don't trigger a DB save yet
-    update_job_from_profile(job, profile)  # Copy all parsed fields onto the model instance
-    job.save()  # Single DB write with all fields populated
+    stem, ext = os.path.splitext(file_name)
+    stored_name = f'jobs/{stem}{suffix}{ext}' if ext else f'jobs/{stem}{suffix}'
+    job.description_file.save(stored_name, ContentFile(file_bytes), save=False)
+    update_job_from_profile(job, profile)
+    job.save()
     return job
+
+
+def replace_active_job_description(file_obj) -> JobDescription | list[JobDescription]:
+    profile_result = parse_job_upload(file_obj)  # Parse file → JobProfile(s)
+    filename = os.path.basename(getattr(file_obj, 'name', '') or 'uploaded-job-description.txt')
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0)
+    file_bytes = File(file_obj).read()
+    title_fallback = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ').strip()
+
+    if isinstance(profile_result, list):
+        jobs = []
+        for index, profile in enumerate(profile_result, 1):
+            jobs.append(_build_saved_job(filename, file_bytes, profile, title_fallback, suffix=f'-{index}'))
+        return jobs
+
+    return _build_saved_job(filename, file_bytes, profile_result, title_fallback)
 
 
 def remove_active_job_description(job_id=None) -> bool:
@@ -168,6 +181,7 @@ def update_applicant_from_resume_profile(applicant, profile: ResumeProfile) -> N
 
 def update_job_from_profile(job, profile: JobProfile) -> None:
     job.title = profile.title or job.title
+    job.reporting_to = profile.reporting_to or ''
     job.company = profile.company or ''
     job.location = profile.location or ''
     job.employment_type = profile.employment_type or ''
@@ -270,6 +284,7 @@ def refresh_applicant_matches(applicants, active_job: JobDescription | None):
 def build_job_profile_from_model(job) -> JobProfile:
     return JobProfile(
         title=job.title,
+        reporting_to=getattr(job, 'reporting_to', '') or None,
         company=job.company,
         location=job.location,
         employment_type=job.employment_type,

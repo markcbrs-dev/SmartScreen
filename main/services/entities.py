@@ -39,6 +39,7 @@ class ResumeProfile:
 @dataclass
 class JobProfile:
     title: Optional[str] = None
+    reporting_to: Optional[str] = None
     company: Optional[str] = None
     location: Optional[str] = None
     employment_type: Optional[str] = None

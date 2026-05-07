@@ -144,6 +144,7 @@ class Applicant(models.Model):
 class JobDescription(models.Model):
     title = models.CharField(max_length=200)
     description_file = models.FileField(upload_to='jobs/')
+    reporting_to = models.CharField(max_length=200, blank=True, default='')
     company = models.CharField(max_length=200, blank=True, default='')
     location = models.CharField(max_length=200, blank=True, default='')
     employment_type = models.CharField(max_length=100, blank=True, default='')

@@ -103,6 +103,7 @@ class JobDescriptionParser:
         title = self.extract_job_title(raw_text, filename=filename)
         return JobProfile(
             title=normalize_title_text(title) if title else None,
+            reporting_to=self.extract_reporting_to(raw_text),
             company=self.extract_company(raw_text),
             location=self.extract_location(raw_text),
             employment_type=self.extract_employment_type(raw_text),
@@ -307,6 +308,24 @@ class JobDescriptionParser:
                     return normalize_whitespace(entity.text)
         return None
 
+    def extract_reporting_to(self, text: str) -> Optional[str]:
+        patterns = [
+            r'Reporting\s+To\s*:\s*(.+)',
+            r'Reports?\s+To\s*:\s*(.+)',
+            r'Supervisor\s*:\s*(.+)',
+        ]
+        for line in text.splitlines()[:60]:
+            candidate = line.strip()
+            if not candidate or len(candidate) > 160:
+                continue
+            for pattern in patterns:
+                match = re.search(pattern, candidate, re.IGNORECASE)
+                if match:
+                    value = normalize_whitespace(match.group(1))
+                    if value:
+                        return value.title()
+        return None
+
     def extract_location(self, text: str) -> Optional[str]:
         for pattern in [r'Location:\s*(.+)', r'Work Location:\s*(.+)', r'Based in:\s*(.+)']:
             matches = re.findall(pattern, text, re.IGNORECASE)
@@ -338,6 +357,12 @@ class JobDescriptionParser:
 
     def extract_employment_type(self, text: str) -> Optional[str]:
         text_lower = text.lower()
+        combined_patterns = [
+            r'\bfull\s*[- ]time\s*(?:or|/|and)\s*part\s*[- ]time\b',
+            r'\bpart\s*[- ]time\s*(?:or|/|and)\s*full\s*[- ]time\b',
+        ]
+        if any(re.search(pattern, text_lower) for pattern in combined_patterns):
+            return normalize_employment_type('full-time or part-time')
         for item in self.employment_types:
             if re.search(r'\b' + re.escape(item) + r'\b', text_lower):
                 return normalize_employment_type(item)
@@ -498,11 +523,11 @@ class JobDescriptionParser:
             if not normalized:
                 continue
             # Scan for a line that contains one of the section heading keywords
-            if any(keyword in normalized for keyword in keywords):
+            if len(normalized) <= 80 and any(keyword in normalized for keyword in keywords):
                 # Collect up to 7 lines after the heading as section items
                 # Stops early on a blank line; increase index + 8 if your JDs have longer sections
                 for next_line in lines[index + 1:index + 8]:
-                    cleaned = re.sub(r'^[•\-*\d.)\s]+', '', next_line).strip()  # Strip bullet/number prefixes
+                    cleaned = self._normalize_section_item(next_line)
                     if not cleaned:
                         break  # Blank line = end of section
                     if 8 < len(cleaned) < 220:  # Ignore lines that are too short or too long to be items
@@ -510,6 +535,23 @@ class JobDescriptionParser:
                 if items:
                     break  # Stop after the first matching section
         return list(dict.fromkeys(items))[:limit]  # dict.fromkeys preserves order and deduplicates
+
+    def _normalize_section_item(self, line: str) -> str:
+        stripped = line.strip()
+        if not stripped:
+            return ''
+
+        bullet_match = re.match(r'^([•\-*])\s*(.+)$', stripped)
+        if bullet_match:
+            marker, content = bullet_match.groups()
+            content = content.strip()
+            return f'{marker} {content}' if content else ''
+
+        numbered_match = re.match(r'^\d+[.)]\s*(.+)$', stripped)
+        if numbered_match:
+            return numbered_match.group(1).strip()
+
+        return stripped
 
     def _extract_named_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
         lines = text.splitlines()

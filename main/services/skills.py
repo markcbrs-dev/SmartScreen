@@ -145,6 +145,13 @@ _SKILL_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition('Presentation Skills', 'soft', ('presentation skills', 'presentation skill')),
     SkillDefinition('Project-Based Learning', 'soft', ('project-based learning', 'project based learning')),
     SkillDefinition('Student Reporting', 'soft', ('student reporting',)),
+    SkillDefinition('Guest Service', 'soft', ('guest service', 'guest services', 'guest satisfaction', 'guest inquiries', 'vip guests')),
+    SkillDefinition('Customer Service', 'soft', ('customer service', 'customer support', 'client service')),
+    SkillDefinition('Order Taking', 'soft', ('order taking', 'take orders', 'taking orders')),
+    SkillDefinition('Food Service', 'hard', ('food service', 'food items', 'buffet service', 'buffet areas')),
+    SkillDefinition('Beverage Service', 'hard', ('beverage service', 'beverage items', 'beverages', 'drink service')),
+    SkillDefinition('Inventory Management', 'hard', ('inventory management', 'stock condiments', 'stock shelves', 'procurement')),
+    SkillDefinition('Sanitation', 'hard', ('sanitation', 'sanitized', 'clean and sanitized', 'clean and organized')),
 )
 
 
@@ -186,6 +193,24 @@ _EXPERIENCE_LEVEL_ALIASES = {
 }
 
 _EMPLOYMENT_TYPE_ALIASES = {
+    'Full-Time / Part-Time': (
+        'full-time or part-time',
+        'full time or part time',
+        'full-time/part-time',
+        'full time/part time',
+        'full-time and part-time',
+        'full time and part time',
+        'part-time or full-time',
+        'part time or full time',
+        'part-time/full-time',
+        'part time/full time',
+        'part-time and full-time',
+        'part time and full time',
+        'full-time / part-time',
+        'full time / part time',
+        'part-time / full-time',
+        'part time / full time',
+    ),
     'Full-Time': ('full-time', 'full time'),
     'Part-Time': ('part-time', 'part time'),
     'Contract': ('contract', 'contractor', 'contractual'),

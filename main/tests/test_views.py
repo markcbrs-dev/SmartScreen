@@ -1,5 +1,6 @@
 import importlib.util
 from io import BytesIO
+from pathlib import Path
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
@@ -39,6 +40,15 @@ def build_docx_file(name: str, paragraphs: list[str]) -> SimpleUploadedFile:
 
 def build_text_file(name: str, content: str) -> SimpleUploadedFile:
 	return SimpleUploadedFile(name, content.encode('utf-8'), content_type='text/plain')
+
+
+def build_workspace_file(name: str) -> SimpleUploadedFile:
+	file_path = Path(__file__).resolve().parents[2] / name
+	return SimpleUploadedFile(
+		name,
+		file_path.read_bytes(),
+		content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	)
 
 
 class ApplicantFlowTests(TestCase):
@@ -203,6 +213,34 @@ class JobUploadTests(TestCase):
 		self.user = User.objects.create_user(username='hr@example.com', password='secret123', is_staff=True)
 		self.client.force_login(self.user)
 
+	def test_dashboard_uploads_multiple_job_descriptions_from_one_file(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'hotel-roles.txt',
+					'JOB DESCRIPTION\n'
+					'JOB TITLE\n'
+					'KIDS ATTENDANT\n'
+					'DUTIES & RESPONSIBILITIES\n'
+					'• Supervising children in their own activities.\n\n'
+					'JOB DESCRIPTION\n'
+					'JOB TITLE\n'
+					'BARTENDER\n'
+					'DUTIES & RESPONSIBILITIES\n'
+					'• Preparing beverages for guests.\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Uploaded 2 job descriptions')
+		self.assertEqual(JobDescription.objects.count(), 2)
+		self.assertContains(response, 'Kids Attendant')
+		self.assertContains(response, 'Bartender')
+
 	def test_dashboard_uploads_job_description(self):
 		response = self.client.post(
 			reverse('dashboard'),
@@ -218,6 +256,26 @@ class JobUploadTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Uploaded Job Description')
+
+	def test_dashboard_uploads_real_multi_jd_docx_file(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_workspace_file('JOB-DESCRIPTION-all-works.docx'),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Uploaded ')
+		self.assertGreater(JobDescription.objects.count(), 1)
+		self.assertTrue(JobDescription.objects.filter(title='Butler').exists())
+		self.assertTrue(JobDescription.objects.filter(title='Kids Attendant').exists())
+		butler = JobDescription.objects.get(title='Butler')
+		self.assertEqual(butler.reporting_to, 'Area Supervisor')
+		self.assertIn('Hospitality', butler.industries)
+		self.assertIn('Guest Service', butler.required_skills)
 
 	def test_dashboard_keeps_existing_job_cards_when_uploading_new_job(self):
 		self.client.post(

@@ -514,10 +514,6 @@
               <div class="db-job-detail-head-main">
                 <span class="db-job-kicker">Uploaded Job Description</span>
                 <h3 class="db-job-detail-name">{{ job.title }}</h3>
-                <p class="db-job-detail-subtitle">
-                  {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
-                  {% if job.location %} · {{ job.location }}{% endif %}
-                </p>
                 <div class="db-job-detail-pills">
                   {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
                   {% if not job.employment_type and job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
@@ -538,6 +534,10 @@
                 <span class="db-job-detail-meta-label">Employment Type</span>
                 <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
               </div>
+              <div class="db-job-detail-meta-item">
+                <span class="db-job-detail-meta-label">Reporting To</span>
+                <div class="db-job-detail-meta-value">{{ job.reporting_to|default:'Not detected' }}</div>
+              </div>
             </div>
 
             {% if job.raw_text %}
@@ -549,7 +549,6 @@
                 <div class="db-job-preview-text db-job-description-groups">
                   {% for section in job.description_preview_excerpt_sections %}
                     <div class="db-job-description-group">
-                      {% if section.heading_html %}<p class="db-job-description-heading">{{ section.heading_html|safe }}</p>{% endif %}
                       {% if section.blocks %}
                         {% for block in section.blocks %}
                           {% if block.type == 'list' %}
@@ -617,10 +616,6 @@
                   <div class="db-job-detail-head">
                     <div>
                       <h4 class="db-job-detail-name">{{ job.title }}</h4>
-                      <p class="db-job-detail-subtitle">
-                        {% if job.company %}{{ job.company }}{% else %}Company not detected{% endif %}
-                        {% if job.location %} · {{ job.location }}{% endif %}
-                      </p>
                     </div>
                     <div class="db-job-detail-pills">
                       {% if job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
@@ -641,6 +636,10 @@
                       <span class="db-job-detail-meta-label">Employment Type</span>
                       <div class="db-job-detail-meta-value">{{ job.employment_type|default:'Not detected' }}</div>
                     </div>
+                    <div class="db-job-detail-meta-item">
+                      <span class="db-job-detail-meta-label">Reporting To</span>
+                      <div class="db-job-detail-meta-value">{{ job.reporting_to|default:'Not detected' }}</div>
+                    </div>
                   </div>
                   
                   {% if job.description_preview_sections %}
@@ -651,7 +650,7 @@
                     <div class="db-job-detail-raw-text db-job-description-groups">
                       {% for section in job.description_preview_sections %}
                         <div class="db-job-description-group">
-                          {% if section.heading_html %}<p class="db-job-description-heading">{{ section.heading_html|safe }}</p>{% endif %}
+                          {% if section.heading_html and section.heading_html|striptags|lower != 'job description:' %}<p class="db-job-description-heading">{{ section.heading_html|safe }}</p>{% endif %}
                           {% if section.blocks %}
                             {% for block in section.blocks %}
                               {% if block.type == 'list' %}

@@ -1,9 +1,12 @@
 import importlib.util
+from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+from docx import Document
 
 from main.services.job_parser import JobDescriptionParser
 from main.services.resume_parser import ResumeParser
@@ -156,9 +159,160 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
         self.assertIn('Kubernetes', preferred)
         self.assertIn('Communication', preferred)
 
+    def test_extract_responsibilities_preserves_txt_bullets_and_dashes(self):
+        parser = JobDescriptionParser()
+
+        responsibilities = parser.extract_responsibilities(
+            'Responsibilities\n'
+            '• Build backend APIs\n'
+            '- Review pull requests\n'
+            '1. Mentor junior developers\n'
+        )
+
+        self.assertEqual(
+            responsibilities,
+            ['• Build backend APIs', '- Review pull requests', 'Mentor junior developers'],
+        )
+
+    def test_extract_responsibilities_preserves_docx_bullets(self):
+        parser = JobDescriptionParser()
+        document = Document()
+        document.add_paragraph('Responsibilities')
+        document.add_paragraph('Handle guest requests', style='List Bullet')
+        document.add_paragraph('Prepare daily reports', style='List Bullet')
+
+        buffer = BytesIO()
+        document.save(buffer)
+        buffer.seek(0)
+
+        profile = parser.parse(buffer, filename='responsibilities.docx')
+
+        self.assertEqual(
+            profile.responsibilities,
+            ['• Handle guest requests', '• Prepare daily reports'],
+        )
+
+    def test_extract_employment_type_preserves_full_time_and_part_time(self):
+        parser = JobDescriptionParser()
+
+        employment_type = parser.extract_employment_type(
+            'Employment Type: Full-Time or Part-Time\nSchedule may vary by department.'
+        )
+
+        self.assertEqual(employment_type, 'Full-Time / Part-Time')
+
     def test_extract_experience_level_normalizes_year_based_fallback(self):
         parser = JobDescriptionParser()
 
         level = parser.extract_experience_level('Candidates must have 6 years of experience building backend systems.')
 
         self.assertEqual(level, 'senior')
+
+    def test_parse_docx_two_column_job_description_table(self):
+        parser = JobDescriptionParser()
+        document = Document()
+        document.add_paragraph('JOB DESCRIPTION')
+        table = document.add_table(rows=3, cols=2)
+        table.cell(0, 0).text = 'JOB TITLE'
+        table.cell(0, 1).text = 'KIDS ATTENDANT'
+        table.cell(1, 0).text = 'REPORTING TO:'
+        table.cell(1, 1).text = 'AREA SUPERVISOR'
+        table.cell(2, 0).text = 'DUTIES & RESPONSIBILITIES'
+        table.cell(2, 1).text = (
+            'Supervising children in their own activities.\n'
+            'Organizing fun and recreational activities for children while their parents are away.\n'
+            'Providing the children\'s essential needs.'
+        )
+
+        buffer = BytesIO()
+        document.save(buffer)
+        buffer.seek(0)
+
+        profile = parser.parse(buffer, filename='job-description.docx')
+
+        self.assertEqual(profile.title, 'Kids Attendant')
+        self.assertEqual(profile.reporting_to, 'Area Supervisor')
+        self.assertIn('Supervising children in their own activities.', profile.responsibilities)
+        self.assertIn(
+            'Organizing fun and recreational activities for children while their parents are away.',
+            profile.responsibilities,
+        )
+        self.assertEqual(profile.qualifications, [])
+
+    def test_parse_docx_hotel_style_butler_table(self):
+        parser = JobDescriptionParser()
+        document = Document()
+        document.add_paragraph('JOB DESCRIPTION')
+        table = document.add_table(rows=3, cols=2)
+        table.cell(0, 0).text = 'JOB TITLE'
+        table.cell(0, 1).text = 'BUTLER'
+        table.cell(1, 0).text = 'REPORTING TO:'
+        table.cell(1, 1).text = 'AREA SUPERVISOR'
+        table.cell(2, 0).text = 'DUTIES & RESPONSIBILITIES'
+        table.cell(2, 1).text = (
+            'Keep the horizon club running and does her best to make sure all guests leave delighted.\n'
+            'Get VIP guests as they approach the Horizon Club and provide them with assistance and offered deals.\n'
+            'Prepare buffet areas and ensure that all necessary food and beverage items are presented in an appealing manner.\n'
+            'Perform follow up duties to ensure continuous guest satisfaction and take orders for additional services.'
+        )
+
+        buffer = BytesIO()
+        document.save(buffer)
+        buffer.seek(0)
+
+        profile = parser.parse(buffer, filename='butler-job-description.docx')
+
+        self.assertEqual(profile.title, 'Butler')
+        self.assertEqual(profile.reporting_to, 'Area Supervisor')
+        self.assertEqual(profile.qualifications, [])
+        self.assertIn('Guest Service', profile.required_skills)
+        self.assertTrue(any(skill in profile.required_skills for skill in ['Beverage Service', 'Food Service']))
+        self.assertIn('Hospitality', profile.industries)
+        self.assertIn(
+            'Keep the horizon club running and does her best to make sure all guests leave delighted.',
+            profile.responsibilities,
+        )
+        self.assertIn(
+            'Perform follow up duties to ensure continuous guest satisfaction and take orders for additional services.',
+            profile.responsibilities,
+        )
+
+    def test_parse_splits_multi_job_description_document(self):
+        parser = JobDescriptionParser()
+
+        profiles = parser.parse_text(
+            'JOB TITLE\nKIDS ATTENDANT\nDUTIES & RESPONSIBILITIES\n• Supervising children in their own activities.'
+        )
+
+        self.assertEqual(profiles.title, 'Kids Attendant')
+
+        result = parser.parse_text(
+            'JOB TITLE\nBARTENDER\nDUTIES & RESPONSIBILITIES\n• Prepare drinks.'
+        )
+        self.assertEqual(result.title, 'Bartender')
+
+    def test_parse_returns_multiple_profiles_for_multi_jd_text(self):
+        parser = JobDescriptionParser()
+        document_text = (
+            'JOB DESCRIPTION\nJOB TITLE\nKIDS ATTENDANT\nDUTIES & RESPONSIBILITIES\n• Supervising children.\n\n'
+            'JOB DESCRIPTION\nJOB TITLE\nBARTENDER\nDUTIES & RESPONSIBILITIES\n• Preparing beverages.'
+        )
+
+        with patch.object(parser, 'extract_text', return_value=document_text):
+            profiles = parser.parse(object(), filename='hotel-jobs.docx')
+
+        self.assertEqual(len(profiles), 2)
+        self.assertEqual([profile.title for profile in profiles], ['Kids Attendant', 'Bartender'])
+
+    def test_parse_real_workspace_multi_jd_docx_file(self):
+        parser = JobDescriptionParser()
+        docx_path = Path(__file__).resolve().parents[2] / 'JOB-DESCRIPTION-all-works.docx'
+
+        with docx_path.open('rb') as file_obj:
+            profiles = parser.parse(file_obj, filename=docx_path.name)
+
+        self.assertIsInstance(profiles, list)
+        self.assertGreater(len(profiles), 1)
+        titles = {profile.title for profile in profiles}
+        self.assertIn('Kids Attendant', titles)
+        self.assertIn('Butler', titles)
