@@ -232,6 +232,15 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     if target_job is None:
         return applicant, None  # No job at all; nothing to score against
 
+    # Skip re-scoring if the applicant already has a valid score for this exact job.
+    # match_notes is {} by default and non-empty after the first score, so it is a
+    # reliable signal that scoring has already run.  The score only becomes stale
+    # when the applicant's job FK changes (e.g. old job deleted → SET_NULL) or when
+    # a new job is uploaded and this applicant has no locked preference — in both
+    # cases applied_job_id will differ from target_job.id, so the guard is bypassed.
+    if applicant.applied_job_id == target_job.id and applicant.match_notes:
+        return applicant, None
+
     # Lazy resume parsing: only parse the file if structured fields are not already stored
     # (avoids re-parsing on every dashboard refresh)
     has_parsed_resume = bool(

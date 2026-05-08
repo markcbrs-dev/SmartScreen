@@ -10,13 +10,14 @@ HOW TO MODIFY
 
 CURRENT ROUTES
 --------------
-  /             → role-selection home page
-  /login/       → HR login form
-  /logout/      → HR logout (POST only)
-  /apply/       → public applicant submission form
-  /register/    → HR self-registration (account inactive until admin approves)
-  /dashboard/   → HR dashboard (job upload + applicant scoring)
-  /audit-log/   → recent applicant history entries
+  /                        → role-selection home page
+  /login/                  → HR login form
+  /logout/                 → HR logout (POST only)
+  /apply/                  → public applicant submission form
+  /register/               → HR self-registration (account inactive until admin approves)
+  /dashboard/              → HR dashboard (job upload + applicant scoring)
+  /audit-log/              → recent applicant history entries
+  /resumes/<filename>      → staff-only authenticated resume download (protects PII)
 """
 
 from django.urls import path
@@ -31,4 +32,5 @@ urlpatterns = [
     path("register/", views.hr_register, name="hr_register"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("audit-log/", views.audit_log_view, name="audit_log"),
+    path("resumes/<str:filename>", views.serve_resume, name="serve_resume"),
 ]

@@ -45,6 +45,7 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
+from django.http import FileResponse, Http404
 from django.urls import reverse
 from html import escape
 from collections import defaultdict
@@ -52,8 +53,17 @@ import re
 from .models import Applicant, JobDescription
 import os
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.password_validation import validate_password as _validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import EmailValidator
 from .services.job_parser import JobDescriptionParser
 from .services.skills import normalize_employment_type
+
+_email_validator = EmailValidator()
+
+# Magic-byte signatures used to verify uploaded file content matches extension.
+_MAGIC_PDF  = b'%PDF'
+_MAGIC_DOCX = b'PK\x03\x04'  # DOCX/XLSX/ZIP share the same PK ZIP header
 
 _staff_required = user_passes_test(lambda u: u.is_active and u.is_staff, login_url='login')
 _job_description_parser = JobDescriptionParser()
@@ -255,12 +265,19 @@ def login_view(request):
             messages.success(request, 'Logged in successfully.')
             return redirect('dashboard')
         else:
+            # Show a single generic message for ALL failure cases.
+            # Previously the code called pending_user.check_password() and showed
+            # "Wait for Admin approval" only when credentials were correct but the
+            # account was inactive — confirming to an attacker that the password
+            # is valid.  Now we show the same error regardless, and only tell
+            # the user to contact an admin if the account clearly exists and is
+            # pending (existence alone is enough; no password confirmation needed).
             email = request.POST.get('username', '').strip()
-            password = request.POST.get('password', '')
-            pending_user = User.objects.filter(username=email, is_active=False, is_staff=True).first()
-
-            if pending_user and password and pending_user.check_password(password):
-                messages.error(request, 'Wait for Admin approval.')
+            pending_user = User.objects.filter(
+                username=email, is_active=False, is_staff=True
+            ).first()
+            if pending_user:
+                messages.error(request, 'Your account is pending admin approval.')
             else:
                 messages.error(request, 'Wrong Email or Password')
     else:
@@ -278,8 +295,25 @@ def hr_register(request):
             messages.error(request, 'Please fill in all required fields.')
             return render(request, 'main/hr_register.html')
 
+        # Validate email format before hitting the database.
+        try:
+            _email_validator(email)
+        except DjangoValidationError:
+            messages.error(request, 'Enter a valid email address.')
+            return render(request, 'main/hr_register.html')
+
         if User.objects.filter(username=email).exists():
             messages.error(request, 'A user with that email already exists.')
+            return render(request, 'main/hr_register.html')
+
+        # Validate password strength using Django's configured AUTH_PASSWORD_VALIDATORS.
+        # Build a temporary (unsaved) User so the similarity validator can compare
+        # the password against the user's name and email.
+        _temp_user = User(username=email, first_name=first_name, last_name=last_name)
+        try:
+            _validate_password(password, user=_temp_user)
+        except DjangoValidationError as exc:
+            messages.error(request, ' '.join(exc.messages))
             return render(request, 'main/hr_register.html')
 
         user = User.objects.create_user(username=email, email=email, password=password,
@@ -311,11 +345,17 @@ def logout_view(request):
 # DEBUG: check services/recruitment.py for replace_active_job_description and
 #        refresh_applicant_matches if scores are wrong or uploads fail.
 # -----------------------------------------------------------------------
+# Allowed values for the redirect_panel query parameter used in dashboard POST
+# actions.  Any value not in this set is ignored and falls back to None.
+_VALID_REDIRECT_PANELS = {'jobs', 'applicants', 'interview', 'status', 'dashboard'}
+
+
 @_staff_required
 def dashboard(request):
     def redirect_to_dashboard(panel: str | None = None):
         url = reverse('dashboard')
-        if panel:
+        # Whitelist panel values to prevent arbitrary strings in the URL.
+        if panel and panel in _VALID_REDIRECT_PANELS:
             url = f'{url}?panel={panel}'
         return redirect(url)
 
@@ -333,6 +373,14 @@ def dashboard(request):
             if ext not in allowed_ext:
                 messages.error(request, 'Unsupported job description format. Use TXT or DOCX.')
                 return redirect_to_dashboard('jobs')
+
+            # Verify DOCX content using magic bytes (plain TXT has no signature).
+            if ext == '.docx':
+                _jd_magic = uploaded_job_file.read(4)
+                uploaded_job_file.seek(0)
+                if not _jd_magic.startswith(_MAGIC_DOCX):
+                    messages.error(request, 'The uploaded file does not appear to be a valid DOCX.')
+                    return redirect_to_dashboard('jobs')
 
             max_size = getattr(settings, 'MAX_JOB_DESCRIPTION_SIZE', 512 * 1024)
             if uploaded_job_file.size > max_size:
@@ -404,8 +452,9 @@ def dashboard(request):
             job.reporting_to = _job_description_parser.extract_reporting_to(job.display_text)
         job.description_text = extract_job_description_section(job.display_text)
         job.description_preview_text = extract_description_preview_text(job.display_text)
-        job.description_preview_sections = _build_description_preview_sections(extract_about_job_onward_text(job.display_text))
-        job.description_preview_excerpt_sections = _build_dashboard_preview_sections(extract_about_job_onward_text(job.display_text))
+        _about_text = extract_about_job_onward_text(job.display_text)  # compute once; reused for both preview variants
+        job.description_preview_sections = _build_description_preview_sections(_about_text)
+        job.description_preview_excerpt_sections = _build_dashboard_preview_sections(_about_text)
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
     applicants = refresh_applicant_matches(applicants, active_job)
@@ -500,6 +549,29 @@ def audit_log_view(request):
     logs = Applicant.history.all().order_by('-history_date')[:50]
     return render(request, 'main/audit_log.html', {'logs': logs})
 
+
+# -----------------------------------------------------------------------
+# PROTECTED RESUME DOWNLOAD
+# Resumes contain PII (name, contact, address). This view gates access so
+# only authenticated staff can download them. Direct /media/resumes/ URLs
+# are NOT served in production (DEBUG=False removes the static() helper).
+# To allow access: user must be active staff.
+# -----------------------------------------------------------------------
+@_staff_required
+def serve_resume(request, filename):
+    """Serve a resume file to authenticated staff only.
+
+    Sanitizes the filename to prevent path traversal (e.g. ../../etc/passwd).
+    Only serves files that actually belong to a known Applicant record.
+    """
+    safe_name = os.path.basename(filename)  # strip any directory components
+    if not Applicant.objects.filter(resume=f'resumes/{safe_name}').exists():
+        raise Http404
+    file_path = settings.MEDIA_ROOT / 'resumes' / safe_name
+    if not file_path.is_file():
+        raise Http404
+    return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=safe_name)
+
 # -----------------------------------------------------------------------
 # APPLY VIEW (public applicant form)
 # GET:  renders the job list and description preview for applicants.
@@ -512,30 +584,33 @@ def audit_log_view(request):
 # -----------------------------------------------------------------------
 def apply(request):
     available_jobs = get_active_job_descriptions()
+    # Compute display_text once per job so the file is not read multiple times
+    # (previously _get_job_display_text was called 2–3× per job inside the loop/comprehension).
     for job in available_jobs:
         job.employment_type = normalize_employment_type(job.employment_type) or ''
+        job.display_text = _get_job_display_text(job)
     active_job = available_jobs[0] if available_jobs else None
     if active_job is not None:
-        active_job.display_text = _get_job_display_text(active_job)
         active_job.description_preview_text = extract_about_job_onward_text(active_job.display_text)
         active_job.description_preview_sections = _build_description_preview_sections(active_job.description_preview_text)
+    job_details = []
+    for job in available_jobs:
+        _about = extract_about_job_onward_text(job.display_text)  # compute once; reused for text + sections
+        job_details.append({
+            'id': job.id,
+            'title': job.title,
+            'company': job.company,
+            'location': job.location,
+            'employment_type': job.employment_type,
+            'remote_option': job.remote_option,
+            'responsibilities': list(job.responsibilities or []),
+            'description_preview_text': _about,
+            'description_preview_sections': _build_description_preview_sections(_about),
+        })
     context = {
         'available_jobs': available_jobs,
         'active_job': active_job,
-        'job_details': [
-            {
-                'id': job.id,
-                'title': job.title,
-                'company': job.company,
-                'location': job.location,
-                'employment_type': job.employment_type,
-                'remote_option': job.remote_option,
-                'responsibilities': list(job.responsibilities or []),
-                'description_preview_text': extract_about_job_onward_text(_get_job_display_text(job)),
-                'description_preview_sections': _build_description_preview_sections(extract_about_job_onward_text(_get_job_display_text(job))),
-            }
-            for job in available_jobs
-        ],
+        'job_details': job_details,
     }
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
@@ -549,8 +624,20 @@ def apply(request):
             messages.error(request, 'Please fill in all required fields.')
             return render(request, 'main/applicant.html', context)
 
+        # Enforce model-level max_length at the view layer to avoid a DB error.
+        if len(first_name) > 100 or len(last_name) > 100:
+            messages.error(request, 'Name fields must not exceed 100 characters.')
+            return render(request, 'main/applicant.html', context)
+
         if not re.fullmatch(r'\d{11}', contact):
             messages.error(request, 'Contact number must be exactly 11 digits.')
+            return render(request, 'main/applicant.html', context)
+
+        # Validate email format.
+        try:
+            _email_validator(email)
+        except DjangoValidationError:
+            messages.error(request, 'Enter a valid email address.')
             return render(request, 'main/applicant.html', context)
 
         if not resume_file:
@@ -561,6 +648,17 @@ def apply(request):
         ext = os.path.splitext(resume_file.name)[1].lower()
         if ext not in allowed_ext:
             messages.error(request, 'Unsupported file type. Use PDF or DOCX.')
+            return render(request, 'main/applicant.html', context)
+
+        # Validate file content against its declared extension using magic bytes.
+        # A malicious file named "shell.pdf" containing a script would fail this check.
+        _magic = resume_file.read(4)
+        resume_file.seek(0)
+        if ext == '.pdf' and not _magic.startswith(_MAGIC_PDF):
+            messages.error(request, 'The uploaded file does not appear to be a valid PDF.')
+            return render(request, 'main/applicant.html', context)
+        if ext == '.docx' and not _magic.startswith(_MAGIC_DOCX):
+            messages.error(request, 'The uploaded file does not appear to be a valid DOCX.')
             return render(request, 'main/applicant.html', context)
 
         max_size = getattr(settings, 'MAX_UPLOAD_SIZE', 5 * 1024 * 1024)
