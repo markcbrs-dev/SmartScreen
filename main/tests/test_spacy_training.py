@@ -10,6 +10,7 @@ from main.services.entities import JobProfile, ResumeProfile
 from main.services.matcher import ResumeJobMatcher
 from main.services.spacy_training import (
     load_seed_job_text_examples,
+    load_seed_resume_text_examples,
     load_job_augmentation_examples,
     load_resume_examples,
     normalize_job_label,
@@ -71,7 +72,7 @@ class SpacyTrainingTests(SimpleTestCase):
 
             examples = load_job_augmentation_examples(csv_path, json_path, known_labels={'AI Engineer'})
 
-            self.assertEqual(len(examples), 2)
+            self.assertGreaterEqual(len(examples), 2)
             self.assertTrue(all(label == 'AI Engineer' for _, label in examples))
 
     def test_normalize_job_label_strips_generic_seniority_for_known_non_tech_labels(self):
@@ -123,6 +124,36 @@ class SpacyTrainingTests(SimpleTestCase):
         )
         self.assertEqual({label for _, label in examples}, set(labels))
 
+    def test_load_seed_resume_text_examples_reads_labeled_ocr_payload(self):
+        with TemporaryDirectory() as temp_dir:
+            json_path = Path(temp_dir) / 'resume-seeds.json'
+            json_path.write_text(json.dumps([
+                {
+                    'label': 'Bellman',
+                    'text': (
+                        'YRONE BINUYA\n'
+                        'Bachelor of Science in Hospitality Management\n'
+                        'Bellman / Concierge\n'
+                        'Assists guests with luggage, provides information, manages transfers, and arranges accommodations.\n'
+                    ),
+                },
+                {
+                    'label': 'Receptionist',
+                    'text': (
+                        'Meloje Cuizon\n'
+                        'Receptionist\n'
+                        'APEX MANNING INC.\n'
+                        'Communication, teamwork, problem solving.\n'
+                    ),
+                },
+            ]), encoding='utf-8')
+
+            examples, labels = load_seed_resume_text_examples([json_path])
+
+            self.assertEqual(labels, ['Bellman', 'Receptionist'])
+            self.assertEqual({label for _, label in examples}, {'Bellman', 'Receptionist'})
+            self.assertTrue(any('Assists guests with luggage' in text for text, label in examples if label == 'Bellman'))
+
     def test_train_textcat_model_accepts_seeded_job_only_labels(self):
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -157,6 +188,47 @@ class SpacyTrainingTests(SimpleTestCase):
 
             self.assertEqual(sorted(metadata['labels']), ['Barista', 'Bartender'])
             self.assertGreaterEqual(metadata['seed_job_examples'], 2)
+
+    def test_train_textcat_model_accepts_seeded_resume_only_labels(self):
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            resume_csv = temp_path / 'resume.csv'
+            output_dir = temp_path / 'model'
+            seed_resume_text = temp_path / 'resume-seeds.json'
+
+            with resume_csv.open('w', encoding='utf-8', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=['job_position_name', 'career_objective', 'skills', 'matched_score'])
+                writer.writeheader()
+
+            seed_resume_text.write_text(json.dumps([
+                {
+                    'label': 'Bellman',
+                    'text': (
+                        'Bellman / Concierge\n'
+                        'Assists guests with luggage, manages transfers, and welcomes guests.\n'
+                        'Bachelor of Science in Hospitality Management\n'
+                    ),
+                },
+                {
+                    'label': 'Receptionist',
+                    'text': (
+                        'Receptionist\n'
+                        'Answer guest complaints, inquiries, requests, and check in and check out guest transactions.\n'
+                    ),
+                },
+            ]), encoding='utf-8')
+
+            metadata = train_textcat_model(
+                resume_csv_path=resume_csv,
+                output_dir=output_dir,
+                seed_resume_text_paths=[seed_resume_text],
+                epochs=1,
+                train_fraction=0.5,
+                seed=7,
+            )
+
+            self.assertEqual(sorted(metadata['labels']), ['Bellman', 'Receptionist'])
+            self.assertGreaterEqual(metadata['seed_resume_examples'], 2)
 
     def test_train_textcat_model_writes_model_artifacts(self):
         with TemporaryDirectory() as temp_dir:

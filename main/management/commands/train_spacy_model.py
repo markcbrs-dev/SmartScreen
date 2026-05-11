@@ -55,6 +55,12 @@ class Command(BaseCommand):
             help='Optional raw TXT or DOCX JD file to parse into seeded labels/examples. Can be passed multiple times.',
         )
         parser.add_argument(
+            '--seed-resume-text',
+            action='append',
+            default=[str(dataset_dir / 'client_resume_seeds.json')],
+            help='Optional labeled JSON file of raw OCR resume texts to seed title examples. Can be passed multiple times.',
+        )
+        parser.add_argument(
             '--output-dir',
             default=str(Path(settings.BASE_DIR) / 'models' / 'spacy_job_classifier'),
             help='Directory where the trained spaCy model will be written.',
@@ -89,6 +95,7 @@ class Command(BaseCommand):
             job_csv_path=options.get('job_data') or None,
             job_json_path=options.get('job_json') or None,
             seed_job_text_paths=options.get('seed_job_text') or None,
+            seed_resume_text_paths=options.get('seed_resume_text') or None,
             min_match_score=options['min_match_score'],
             train_fraction=options['train_fraction'],
             epochs=options['epochs'],

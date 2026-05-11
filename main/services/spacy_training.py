@@ -43,6 +43,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from main.services.job_parser import JobDescriptionParser
+from main.services.resume_parser import ResumeParser
 
 try:
     import spacy
@@ -198,6 +199,33 @@ def load_resume_examples(resume_csv_path: str | Path, min_match_score: float = 0
     return deduplicate_examples(examples), sorted(labels)
 
 
+def load_seed_resume_text_examples(resume_text_paths: list[str | Path] | None = None) -> tuple[list[tuple[str, str]], list[str]]:
+    parser = ResumeParser()
+    examples = []
+    labels = set()
+
+    for path_value in resume_text_paths or []:
+        if not path_value:
+            continue
+        path = Path(path_value)
+        if not path.exists():
+            continue
+
+        for row in read_json_rows(path):
+            label = normalize_job_label(
+                row.get('label', '') or row.get('job_title', '') or row.get('title', ''),
+            )
+            raw_text = normalize_text(row.get('text', '') or row.get('resume_text', '') or row.get('ocr_text', ''))
+            if not label or not raw_text:
+                continue
+
+            labels.add(label)
+            for text in build_seed_resume_training_texts(raw_text, parser):
+                examples.append((text, label))
+
+    return deduplicate_examples(examples), sorted(labels)
+
+
 def load_job_augmentation_examples(
     job_csv_path: str | Path | None = None,
     job_json_path: str | Path | None = None,
@@ -345,6 +373,33 @@ def build_job_profile_training_texts(profile) -> list[str]:
     return [text for text in dict.fromkeys(text for text in variants if text)]
 
 
+def build_seed_resume_training_texts(raw_text: str, parser: ResumeParser | None = None) -> list[str]:
+    parser = parser or ResumeParser()
+    normalized_raw_text = normalize_text(raw_text)
+    skills = parser.extract_skills(normalized_raw_text)
+    education = parser.extract_education(normalized_raw_text)
+    experience = parser.extract_experience(normalized_raw_text)
+    organizations, locations, _ = parser.extract_entities(normalized_raw_text)
+
+    variants = [truncate_training_text(normalized_raw_text)]
+    structured_sections = []
+    if skills:
+        structured_sections.append(f'Skills: {", ".join(skills[:15])}')
+    if experience:
+        structured_sections.append(f'Experience: {", ".join(experience[:10])}')
+    if education:
+        structured_sections.append(f'Education: {", ".join(education[:6])}')
+    if organizations:
+        structured_sections.append(f'Organizations: {", ".join(organizations[:6])}')
+    if locations:
+        structured_sections.append(f'Locations: {", ".join(locations[:6])}')
+
+    if structured_sections:
+        variants.append(truncate_training_text('\n'.join(structured_sections)))
+
+    return [text for text in dict.fromkeys(text for text in variants if text)]
+
+
 def truncate_training_text(text: str, max_length: int = MAX_TRAINING_TEXT_LENGTH) -> str:
     normalized = normalize_text(text)
     if len(normalized) <= max_length:
@@ -438,6 +493,7 @@ def train_textcat_model(
     job_csv_path: str | Path | None = None,
     job_json_path: str | Path | None = None,
     seed_job_text_paths: list[str | Path] | None = None,
+    seed_resume_text_paths: list[str | Path] | None = None,
     min_match_score: float = 0.6,
     train_fraction: float = 0.85,
     epochs: int = 12,
@@ -449,14 +505,15 @@ def train_textcat_model(
         raise RuntimeError('spaCy is not installed. Install the spacy package before training.')
 
     resume_examples, labels = load_resume_examples(resume_csv_path, min_match_score=min_match_score)
-    seed_examples, seed_labels = load_seed_job_text_examples(seed_job_text_paths)
-    label_set = set(labels) | set(seed_labels)
+    seed_job_examples, seed_job_labels = load_seed_job_text_examples(seed_job_text_paths)
+    seed_resume_examples, seed_resume_labels = load_seed_resume_text_examples(seed_resume_text_paths)
+    label_set = set(labels) | set(seed_job_labels) | set(seed_resume_labels)
     if not label_set:
         raise ValueError('No labels were found after preprocessing resume and seeded job data.')
 
     job_examples = load_job_augmentation_examples(job_csv_path, job_json_path, known_labels=label_set)
     labels = sorted(label_set)
-    all_examples = deduplicate_examples([*resume_examples, *seed_examples, *job_examples])
+    all_examples = deduplicate_examples([*resume_examples, *seed_job_examples, *seed_resume_examples, *job_examples])
     if max_examples is not None and max_examples > 0 and len(all_examples) > max_examples:
         all_examples = random.Random(seed).sample(all_examples, max_examples)
     train_rows, dev_rows = split_examples(all_examples, train_fraction=train_fraction, seed=seed)
@@ -502,7 +559,8 @@ def train_textcat_model(
         'trained_at': datetime.now(UTC).isoformat(),
         'labels': labels,
         'resume_examples': len(resume_examples),
-        'seed_job_examples': len(seed_examples),
+        'seed_job_examples': len(seed_job_examples),
+        'seed_resume_examples': len(seed_resume_examples),
         'job_examples': len(job_examples),
         'total_examples': len(all_examples),
         'train_examples': len(train_rows),
@@ -521,6 +579,7 @@ def train_textcat_model(
             'job_csv': str(Path(job_csv_path)) if job_csv_path else None,
             'job_json': str(Path(job_json_path)) if job_json_path else None,
             'seed_job_texts': [str(Path(path)) for path in (seed_job_text_paths or [])],
+            'seed_resume_texts': [str(Path(path)) for path in (seed_resume_text_paths or [])],
         },
     }
 
