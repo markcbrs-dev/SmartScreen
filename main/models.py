@@ -98,7 +98,7 @@ class Applicant(models.Model):
     last_name = EncryptedTextField(default='')
     contact_number = EncryptedTextField(default='')
     email = EncryptedTextField(default='')
-    resume = EncryptedResumeFileField(upload_to='resumes/')
+    resume = EncryptedResumeFileField(upload_to='resumes/', max_length=512)
     applied_job = models.ForeignKey('JobDescription', null=True, blank=True, on_delete=models.SET_NULL, related_name='applicants')
     job_preference_locked = models.BooleanField(default=False)
     position = models.CharField(max_length=50, blank=True, default='')
