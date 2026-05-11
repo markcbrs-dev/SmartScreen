@@ -6,7 +6,7 @@ import main.security
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('main', '0011_alter_historicalapplicant_resume'),
+        ('main', '0012_alter_applicant_position_and_more'),
     ]
 
     operations = [
