@@ -14,6 +14,11 @@
     .wrap{ min-height:calc(100vh - 68px); display:flex; align-items:center; justify-content:center; padding:36px 16px; }
     .card{ width:100%; max-width:var(--max-width); background:var(--card-bg); border-radius:var(--radius); padding:22px; border:1px solid rgba(15,23,42,0.04); }
     .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:var(--gap); }
+    .messages{ display:flex; flex-direction:column; gap:10px; margin:14px 0 18px; }
+    .message{ border-radius:12px; padding:11px 12px; font-size:14px; line-height:1.4; border:1px solid transparent; }
+    .message.error, .message.warning{ background:#fff1f2; color:#9f1239; border-color:#fecdd3; }
+    .message.success{ background:#ecfdf5; color:#166534; border-color:#bbf7d0; }
+    .message.info{ background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
     label{ font-size:12px; color:var(--muted); font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
     input[type="text"], input[type="email"], input[type="password"]{ padding:10px 12px; border-radius:10px; border:1px solid var(--line); font-size:14px; outline:none; }
     input:focus{ border-color:rgba(30,115,216,0.9); box-shadow:0 4px 12px rgba(30,115,216,0.08); }
@@ -33,17 +38,25 @@
       {% csrf_token %}
       <h2>HR Registration</h2>
 
+      {% if messages %}
+        <div class="messages" role="alert" aria-live="polite">
+          {% for message in messages %}
+            <div class="message {{ message.tags|default:'info' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
       <div class="field">
         <label>NAME</label>
         <div style="display:flex;gap:8px;">
-          <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" required />
-          <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" required />
+          <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" value="{{ request.POST.first_name|default:'' }}" required />
+          <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" value="{{ request.POST.last_name|default:'' }}" required />
         </div>
       </div>
 
       <div class="field">
         <label for="email">EMAIL</label>
-        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" value="{{ request.POST.email|default:'' }}" required />
       </div>
 
       <div class="field">

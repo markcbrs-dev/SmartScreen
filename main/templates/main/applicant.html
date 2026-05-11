@@ -592,6 +592,10 @@
                 <span class="job-meta-label">Employment Type</span>
                 <div class="job-meta-value">{{ active_job.employment_type|default:'Not detected' }}</div>
               </div>
+              <div class="job-meta-item">
+                <span class="job-meta-label">Reporting To</span>
+                <div class="job-meta-value">{{ active_job.reporting_to|default:'Not detected' }}</div>
+              </div>
             </div>
 
             <section id="jobDescriptionSection" class="job-section">
@@ -602,7 +606,9 @@
                 <div class="job-description-groups">
                   {% for section in active_job.description_preview_sections %}
                     <div class="job-description-group">
-                      <p class="job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% if section.heading_html and section.heading_html != 'Job Description:' %}
+                        <p class="job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% endif %}
                       {% if section.blocks %}
                         {% for block in section.blocks %}
                           {% if block.type == 'list' %}
@@ -632,10 +638,12 @@
   </main>
 
   <script>
+    const applicantJobDetailsUrl = "{% url 'applicant_job_details' %}";
     const uploadBtn = document.getElementById('uploadBtn');
     const resumeInput = document.getElementById('resumeInput');
     const fileNameEl = document.getElementById('fileName');
     const applicantLayout = document.getElementById('applicantLayout');
+    const profileForm = document.getElementById('profileForm');
     const contactInput = document.getElementById('contact');
     const jobIdSelect = document.getElementById('jobId');
     const jobDescriptionCard = document.getElementById('jobDescriptionCard');
@@ -643,7 +651,7 @@
     const jobPills = document.querySelector('.job-pills');
     const jobMeta = document.querySelector('.job-meta');
     const descriptionSection = document.getElementById('jobDescriptionSection');
-    const jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
+    let jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
 
     uploadBtn.addEventListener('click', function () {
       resumeInput.click();
@@ -705,6 +713,9 @@
     function renderDescriptionSections(sections) {
       return sections.map(function (section) {
         const blocks = Array.isArray(section.blocks) ? section.blocks : [];
+        const headingMarkup = section.heading_html && section.heading_html !== 'Job Description:'
+          ? '<p class="job-description-heading">' + section.heading_html + '</p>'
+          : '';
         const blocksMarkup = blocks.map(function (block) {
           if (block.type === 'list') {
             const items = Array.isArray(block.items_html) ? block.items_html : [];
@@ -719,7 +730,7 @@
         }).join('');
 
         return '<div class="job-description-group">' +
-          '<p class="job-description-heading">' + (section.heading_html || 'Job Description:') + '</p>' +
+          headingMarkup +
           blocksMarkup +
         '</div>';
       }).join('');
@@ -727,6 +738,22 @@
 
     function updateJobDescriptionCard() {
       if (!jobIdSelect) {
+        return;
+      }
+
+      if (!jobIdSelect.value) {
+        if (jobDescriptionTitle) {
+          jobDescriptionTitle.textContent = 'No job description';
+        }
+        if (jobPills) {
+          jobPills.innerHTML = '';
+        }
+        if (jobMeta) {
+          jobMeta.innerHTML = '';
+        }
+        if (descriptionSection) {
+          descriptionSection.innerHTML = '<div class="job-section-header"><h3 class="section-title">Job Description</h3></div><p class="job-empty">Select a target position to preview the uploaded job description.</p>';
+        }
         return;
       }
 
@@ -758,7 +785,8 @@
         jobMeta.innerHTML = [
           '<div class="job-meta-item"><span class="job-meta-label">Company</span><div class="job-meta-value">' + (selectedJob.company || 'Not detected') + '</div></div>',
           '<div class="job-meta-item"><span class="job-meta-label">Location</span><div class="job-meta-value">' + (selectedJob.location || 'Not detected') + '</div></div>',
-          '<div class="job-meta-item"><span class="job-meta-label">Employment Type</span><div class="job-meta-value">' + (selectedJob.employment_type || 'Not detected') + '</div></div>'
+          '<div class="job-meta-item"><span class="job-meta-label">Employment Type</span><div class="job-meta-value">' + (selectedJob.employment_type || 'Not detected') + '</div></div>',
+          '<div class="job-meta-item"><span class="job-meta-label">Reporting To</span><div class="job-meta-value">' + (selectedJob.reporting_to || 'Not detected') + '</div></div>'
         ].join('');
       }
 
@@ -768,11 +796,78 @@
       }
     }
 
+    function updateJobSelectOptions(selectedValue) {
+      if (!jobIdSelect) {
+        return;
+      }
+
+      const nextValue = selectedValue || '';
+      const options = ['<option value=""' + (nextValue ? '' : ' selected') + '>Select a target position</option>'];
+
+      if (jobDetailsData.length) {
+        jobDetailsData.forEach(function (job) {
+          const isSelected = String(job.id) === String(nextValue);
+          options.push('<option value="' + job.id + '"' + (isSelected ? ' selected' : '') + '>' + escapeHtml(job.title) + '</option>');
+        });
+      } else {
+        options.push('<option value="" disabled>No uploaded job description available</option>');
+      }
+
+      jobIdSelect.innerHTML = options.join('');
+      jobIdSelect.value = nextValue;
+    }
+
+    function updateSubmitAvailability() {
+      const submitButton = profileForm ? profileForm.querySelector('.submit') : null;
+      if (submitButton) {
+        submitButton.disabled = !jobDetailsData.length;
+      }
+    }
+
+    async function refreshJobDetails() {
+      try {
+        const response = await fetch(applicantJobDetailsUrl, {
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        const previousSelection = jobIdSelect ? jobIdSelect.value : '';
+        jobDetailsData = Array.isArray(payload.jobs) ? payload.jobs : [];
+
+        const hasPreviousSelection = jobDetailsData.some(function (job) {
+          return String(job.id) === String(previousSelection);
+        });
+        const nextSelection = hasPreviousSelection ? previousSelection : '';
+
+        updateJobSelectOptions(nextSelection);
+        updateSubmitAvailability();
+        syncJobDescriptionVisibility();
+        updateJobDescriptionCard();
+      } catch (error) {
+        console.warn('Unable to refresh applicant job descriptions.', error);
+      }
+    }
+
     if (jobIdSelect) {
       jobIdSelect.addEventListener('change', function () {
         syncJobDescriptionVisibility();
         updateJobDescriptionCard();
       });
+      window.addEventListener('focus', refreshJobDetails);
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+          refreshJobDetails();
+        }
+      });
+      window.setInterval(refreshJobDetails, 30000);
+      updateSubmitAvailability();
       syncJobDescriptionVisibility();
       updateJobDescriptionCard();
     }

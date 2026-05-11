@@ -135,6 +135,32 @@ class ApplicantFlowTests(TestCase):
 		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
 		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
 
+	def test_apply_job_details_endpoint_returns_current_uploaded_jobs(self):
+		first_job = replace_active_job_description(build_text_file(
+			'front-desk-associate.txt',
+			'Job Title: Front Desk Associate\n'
+			'Company: SmartScreen Suites\n'
+			'About the job:\n'
+			'Welcome guests and manage reservations.\n',
+		))
+		replace_active_job_description(build_text_file(
+			'barista.txt',
+			'Job Title: Barista\n'
+			'Company: SmartScreen Cafe\n'
+			'Duties and Responsibilities:\n'
+			'- Prepare beverages and assist customers.\n',
+		))
+
+		response = self.client.get(reverse('applicant_job_details'))
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertTrue(payload['has_active_job'])
+		self.assertEqual(len(payload['jobs']), 2)
+		self.assertEqual(payload['jobs'][0]['title'], 'Barista')
+		self.assertEqual(payload['jobs'][1]['title'], first_job.title)
+		self.assertIn('Duties and Responsibilities:', [section['heading_html'] for section in payload['jobs'][0]['description_preview_sections']])
+
 	def test_apply_matches_selected_job_and_stores_resume_analysis(self):
 		job = replace_active_job_description(build_text_file(
 			'computer-science-professor.txt',
@@ -666,7 +692,7 @@ class ResumeAccessTests(TestCase):
 		self.assertEqual(response.status_code, 302)
 		self.assertIn(reverse('login'), response['Location'])
 
-	def test_staff_can_download_resume_from_protected_route(self):
+	def test_staff_can_view_resume_from_protected_route(self):
 		self.client.force_login(self.staff_user)
 
 		response = self.client.get(reverse('serve_resume', args=[Path(self.applicant.resume.name).name]))
@@ -676,6 +702,7 @@ class ResumeAccessTests(TestCase):
 			response['Content-Type'],
 			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 		)
+		self.assertIn('inline', response['Content-Disposition'])
 		self.assertIn(Path(self.applicant.resume.name).name, response['Content-Disposition'])
 
 	def test_direct_media_resume_url_is_not_served(self):

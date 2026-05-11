@@ -29,6 +29,7 @@ urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
     path("apply/", views.apply, name="apply"),
+  path("apply/job-details/", views.applicant_job_details, name="applicant_job_details"),
     path("register/", views.hr_register, name="hr_register"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("audit-log/", views.audit_log_view, name="audit_log"),

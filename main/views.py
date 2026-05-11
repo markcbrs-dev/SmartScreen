@@ -45,7 +45,7 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
 from html import escape
 from collections import defaultdict
@@ -240,6 +240,25 @@ def _get_job_display_text(job: JobDescription) -> str:
             description_file.close()
         except OSError:
             pass
+
+
+def _build_apply_job_details(available_jobs: list[JobDescription]) -> list[dict[str, object]]:
+    job_details = []
+    for job in available_jobs:
+        _about = extract_about_job_onward_text(job.display_text)
+        job_details.append({
+            'id': job.id,
+            'title': job.title,
+            'company': job.company,
+            'location': job.location,
+            'reporting_to': job.reporting_to,
+            'employment_type': job.employment_type,
+            'remote_option': job.remote_option,
+            'responsibilities': list(job.responsibilities or []),
+            'description_preview_text': _about,
+            'description_preview_sections': _build_description_preview_sections(_about),
+        })
+    return job_details
 
 # -----------------------------------------------------------------------
 # AUTH VIEWS
@@ -582,7 +601,20 @@ def serve_resume(request, filename):
         raise Http404
     if not applicant.resume.storage.exists(applicant.resume.name):
         raise Http404
-    return FileResponse(applicant.resume.open('rb'), as_attachment=True, filename=safe_name)
+    return FileResponse(applicant.resume.open('rb'), as_attachment=False, filename=safe_name)
+
+
+def applicant_job_details(request):
+    available_jobs = get_active_job_descriptions()
+    for job in available_jobs:
+        job.employment_type = normalize_employment_type(job.employment_type) or ''
+        job.display_text = _get_job_display_text(job)
+
+    payload = {
+        'jobs': _build_apply_job_details(available_jobs),
+        'has_active_job': bool(available_jobs),
+    }
+    return JsonResponse(payload)
 
 # -----------------------------------------------------------------------
 # APPLY VIEW (public applicant form)
@@ -605,20 +637,7 @@ def apply(request):
     if active_job is not None:
         active_job.description_preview_text = extract_about_job_onward_text(active_job.display_text)
         active_job.description_preview_sections = _build_description_preview_sections(active_job.description_preview_text)
-    job_details = []
-    for job in available_jobs:
-        _about = extract_about_job_onward_text(job.display_text)  # compute once; reused for text + sections
-        job_details.append({
-            'id': job.id,
-            'title': job.title,
-            'company': job.company,
-            'location': job.location,
-            'employment_type': job.employment_type,
-            'remote_option': job.remote_option,
-            'responsibilities': list(job.responsibilities or []),
-            'description_preview_text': _about,
-            'description_preview_sections': _build_description_preview_sections(_about),
-        })
+    job_details = _build_apply_job_details(available_jobs)
     context = {
         'available_jobs': available_jobs,
         'active_job': active_job,
