@@ -144,14 +144,14 @@ class Applicant(models.Model):
 # in job_parser.py, and update update_job_from_profile() in recruitment.py.
 # -----------------------------------------------------------------------
 class JobDescription(models.Model):
-    title = models.CharField(max_length=200)
+    title = models.CharField(max_length=50)
     description_file = models.FileField(upload_to='jobs/')
-    reporting_to = models.CharField(max_length=200, blank=True, default='')
-    company = models.CharField(max_length=200, blank=True, default='')
-    location = models.CharField(max_length=200, blank=True, default='')
-    employment_type = models.CharField(max_length=100, blank=True, default='')
-    experience_level = models.CharField(max_length=100, blank=True, default='')
-    salary_range = models.CharField(max_length=100, blank=True, default='')
+    reporting_to = models.CharField(max_length=50, blank=True, default='')
+    company = models.CharField(max_length=50, blank=True, default='')
+    location = models.CharField(max_length=50, blank=True, default='')
+    employment_type = models.CharField(max_length=50, blank=True, default='')
+    experience_level = models.CharField(max_length=50, blank=True, default='')
+    salary_range = models.CharField(max_length=50, blank=True, default='')
     remote_option = models.BooleanField(default=False)
     required_skills = models.JSONField(default=list, blank=True)
     preferred_skills = models.JSONField(default=list, blank=True)
