@@ -235,11 +235,11 @@
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
                   <td class="db-actions-cell">
-                    {% if a.resume %}
+                    {% if a.resume_download_url %}
                       <button
                         type="button"
                         class="db-btn-resume"
-                        onclick="window.open('{{ a.resume.url }}', '_blank', 'noopener,noreferrer')"
+                        onclick="window.open('{{ a.resume_download_url }}', '_blank', 'noopener,noreferrer')"
                         title="View uploaded resume"
                         style="background:#1e73d8;color:#fff;border:none;border-radius:999px;padding:6px 12px;font-size:0.78rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;box-shadow:none;"
                       >

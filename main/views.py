@@ -518,6 +518,11 @@ def dashboard(request):
         for group in applicant_position_groups
         for applicant in group['applicants']
     ]
+    for applicant in applicants:
+        applicant.resume_download_url = None
+        if applicant.resume:
+            applicant.resume_download_url = reverse('serve_resume', args=[os.path.basename(applicant.resume.name)])
+
     total = len(applicants)
     new_count = sum(1 for applicant in applicants if applicant.status == 'NEW')
     interview_count = sum(1 for applicant in applicants if applicant.status == 'INTERVIEW')

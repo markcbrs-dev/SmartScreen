@@ -631,6 +631,58 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Logged out successfully.')
 
 
+class ResumeAccessTests(TestCase):
+	def setUp(self):
+		self.staff_user = User.objects.create_user(username='hr.staff@example.com', password='secret123', is_staff=True)
+		self.applicant = Applicant.objects.create(
+			first_name='Secure',
+			last_name='Applicant',
+			contact_number='+63 912 345 6789',
+			email='secure-applicant@example.com',
+			resume=build_docx_file(
+				'secure-applicant.docx',
+				[
+					'Secure Applicant',
+					'secure-applicant@example.com',
+					'+63 912 345 6789',
+				],
+			),
+		)
+
+	def test_dashboard_uses_protected_resume_link(self):
+		self.client.force_login(self.staff_user)
+
+		response = self.client.get(reverse('dashboard'))
+
+		protected_url = reverse('serve_resume', args=[Path(self.applicant.resume.name).name])
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, protected_url)
+		self.assertNotContains(response, self.applicant.resume.url)
+
+	def test_protected_resume_download_requires_staff_login(self):
+		response = self.client.get(reverse('serve_resume', args=[Path(self.applicant.resume.name).name]))
+
+		self.assertEqual(response.status_code, 302)
+		self.assertIn(reverse('login'), response['Location'])
+
+	def test_staff_can_download_resume_from_protected_route(self):
+		self.client.force_login(self.staff_user)
+
+		response = self.client.get(reverse('serve_resume', args=[Path(self.applicant.resume.name).name]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			response['Content-Type'],
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+		)
+		self.assertIn(Path(self.applicant.resume.name).name, response['Content-Disposition'])
+
+	def test_direct_media_resume_url_is_not_served(self):
+		response = self.client.get(self.applicant.resume.url)
+
+		self.assertEqual(response.status_code, 404)
+
+
 class AuthViewTests(TestCase):
 	def test_login_shows_pending_approval_message_for_inactive_hr_user(self):
 		User.objects.create_user(
