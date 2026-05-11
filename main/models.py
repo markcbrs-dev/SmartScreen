@@ -101,7 +101,7 @@ class Applicant(models.Model):
     resume = EncryptedResumeFileField(upload_to='resumes/')
     applied_job = models.ForeignKey('JobDescription', null=True, blank=True, on_delete=models.SET_NULL, related_name='applicants')
     job_preference_locked = models.BooleanField(default=False)
-    position = models.CharField(max_length=100, blank=True, default='')
+    position = models.CharField(max_length=50, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
     match_score = models.IntegerField(default=0)  # 0–100; recalculated by recruitment.refresh_applicant_match
     resume_text = EncryptedTextField(blank=True, default='')   # raw extracted text from uploaded resume
