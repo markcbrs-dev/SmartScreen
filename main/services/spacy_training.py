@@ -42,6 +42,8 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from main.services.job_parser import JobDescriptionParser
+
 try:
     import spacy
     from spacy.training import Example
@@ -101,6 +103,21 @@ def normalize_job_label(label: str, known_labels: set[str] | None = None) -> str
     alias = LABEL_ALIASES.get(lower_candidate)
     if alias:
         return alias
+
+    generic_candidate = re.sub(
+        r'\b(entry[- ]level|junior|jr|senior|sr|mid[- ]level|experienced|fresher)\b',
+        '',
+        lower_candidate,
+    )
+    generic_candidate = re.sub(r'\s*[-/()]\s*', ' ', generic_candidate)
+    generic_candidate = re.sub(r'\s+', ' ', generic_candidate).strip()
+    if generic_candidate and known_labels:
+        generic_match = next(
+            (known for known in known_labels if known.casefold() == generic_candidate.casefold()),
+            None,
+        )
+        if generic_match is not None:
+            return generic_match
 
     if lower_candidate.startswith('ai engineer'):
         return 'AI Engineer'
@@ -193,18 +210,18 @@ def load_job_augmentation_examples(
             label = normalize_job_label(row.get('Title', ''), known_labels=known_labels)
             if not label or known_labels and label not in known_labels:
                 continue
-            text = build_job_training_text(row)
-            if text:
-                examples.append((text, label))
+            for text in build_job_training_texts(row):
+                if text:
+                    examples.append((text, label))
 
     if job_json_path and Path(job_json_path).exists():
         for row in read_json_rows(job_json_path):
             label = normalize_job_label(row.get('Title', ''), known_labels=known_labels)
             if not label or known_labels and label not in known_labels:
                 continue
-            text = build_job_training_text(row)
-            if text:
-                examples.append((text, label))
+            for text in build_job_training_texts(row):
+                if text:
+                    examples.append((text, label))
 
     return deduplicate_examples(examples)
 
@@ -229,6 +246,103 @@ def build_job_training_text(row: dict[str, object]) -> str:
             sections.append(f'{heading}: {", ".join(values)}')
 
     return truncate_training_text('\n'.join(sections))
+
+
+def build_job_training_texts(row: dict[str, object]) -> list[str]:
+    full_text = build_job_training_text(row)
+    title_values = parse_collection(row.get('Title', ''))
+    skill_values = parse_collection(row.get('Skills', ''))
+    responsibility_values = parse_collection(row.get('Responsibilities', ''))
+    keyword_values = parse_collection(row.get('Keywords', ''))
+    variants = [full_text]
+
+    if title_values and (skill_values or keyword_values):
+        variants.append(truncate_training_text(
+            '\n'.join([
+                f'Job title: {", ".join(title_values)}',
+                f'Skills: {", ".join(skill_values[:12])}' if skill_values else '',
+                f'Keywords: {", ".join(keyword_values[:12])}' if keyword_values else '',
+            ])
+        ))
+
+    if title_values and responsibility_values:
+        variants.append(truncate_training_text(
+            '\n'.join([
+                f'Job title: {", ".join(title_values)}',
+                f'Responsibilities: {", ".join(responsibility_values[:8])}',
+            ])
+        ))
+
+    return [text for text in dict.fromkeys(text for text in variants if text)]
+
+
+def load_seed_job_text_examples(job_text_paths: list[str | Path] | None = None) -> tuple[list[tuple[str, str]], list[str]]:
+    parser = JobDescriptionParser()
+    examples = []
+    labels = set()
+
+    for path_value in job_text_paths or []:
+        if not path_value:
+            continue
+        path = Path(path_value)
+        if not path.exists():
+            continue
+        with path.open('rb') as handle:
+            parsed = parser.parse(handle, filename=path.name)
+        profiles = parsed if isinstance(parsed, list) else [parsed]
+        for profile in profiles:
+            label = normalize_job_label(profile.title or '')
+            if not label:
+                continue
+            labels.add(label)
+            for text in build_job_profile_training_texts(profile):
+                examples.append((text, label))
+
+    return deduplicate_examples(examples), sorted(labels)
+
+
+def build_job_profile_training_texts(profile) -> list[str]:
+    sections = [f'Job title: {profile.title or ""}']
+    if profile.company:
+        sections.append(f'Company: {profile.company}')
+    if profile.location:
+        sections.append(f'Location: {profile.location}')
+    if profile.employment_type:
+        sections.append(f'Employment type: {profile.employment_type}')
+    if profile.experience_level:
+        sections.append(f'Experience level: {profile.experience_level}')
+    if profile.required_skills:
+        sections.append(f'Required skills: {", ".join(profile.required_skills[:15])}')
+    if profile.preferred_skills:
+        sections.append(f'Preferred skills: {", ".join(profile.preferred_skills[:10])}')
+    if profile.responsibilities:
+        sections.append(f'Responsibilities: {", ".join(profile.responsibilities[:10])}')
+    if profile.qualifications:
+        sections.append(f'Qualifications: {", ".join(profile.qualifications[:8])}')
+    if profile.certifications:
+        sections.append(f'Certifications: {", ".join(profile.certifications[:6])}')
+    if profile.industries:
+        sections.append(f'Industries: {", ".join(profile.industries[:6])}')
+
+    variants = [truncate_training_text('\n'.join(part for part in sections if part))]
+
+    if profile.title and (profile.required_skills or profile.preferred_skills):
+        variants.append(truncate_training_text(
+            '\n'.join([
+                f'Job title: {profile.title}',
+                f'Skills: {", ".join((profile.required_skills or [])[:12] + (profile.preferred_skills or [])[:8])}',
+            ])
+        ))
+
+    if profile.title and profile.responsibilities:
+        variants.append(truncate_training_text(
+            '\n'.join([
+                f'Job title: {profile.title}',
+                f'Responsibilities: {", ".join(profile.responsibilities[:8])}',
+            ])
+        ))
+
+    return [text for text in dict.fromkeys(text for text in variants if text)]
 
 
 def truncate_training_text(text: str, max_length: int = MAX_TRAINING_TEXT_LENGTH) -> str:
@@ -323,6 +437,7 @@ def train_textcat_model(
     output_dir: str | Path,
     job_csv_path: str | Path | None = None,
     job_json_path: str | Path | None = None,
+    seed_job_text_paths: list[str | Path] | None = None,
     min_match_score: float = 0.6,
     train_fraction: float = 0.85,
     epochs: int = 12,
@@ -334,12 +449,14 @@ def train_textcat_model(
         raise RuntimeError('spaCy is not installed. Install the spacy package before training.')
 
     resume_examples, labels = load_resume_examples(resume_csv_path, min_match_score=min_match_score)
-    if not labels:
-        raise ValueError('No labeled resume examples were found after preprocessing.')
+    seed_examples, seed_labels = load_seed_job_text_examples(seed_job_text_paths)
+    label_set = set(labels) | set(seed_labels)
+    if not label_set:
+        raise ValueError('No labels were found after preprocessing resume and seeded job data.')
 
-    label_set = set(labels)
     job_examples = load_job_augmentation_examples(job_csv_path, job_json_path, known_labels=label_set)
-    all_examples = deduplicate_examples([*resume_examples, *job_examples])
+    labels = sorted(label_set)
+    all_examples = deduplicate_examples([*resume_examples, *seed_examples, *job_examples])
     if max_examples is not None and max_examples > 0 and len(all_examples) > max_examples:
         all_examples = random.Random(seed).sample(all_examples, max_examples)
     train_rows, dev_rows = split_examples(all_examples, train_fraction=train_fraction, seed=seed)
@@ -385,6 +502,7 @@ def train_textcat_model(
         'trained_at': datetime.now(UTC).isoformat(),
         'labels': labels,
         'resume_examples': len(resume_examples),
+        'seed_job_examples': len(seed_examples),
         'job_examples': len(job_examples),
         'total_examples': len(all_examples),
         'train_examples': len(train_rows),
@@ -402,6 +520,7 @@ def train_textcat_model(
             'resume_csv': str(Path(resume_csv_path)),
             'job_csv': str(Path(job_csv_path)) if job_csv_path else None,
             'job_json': str(Path(job_json_path)) if job_json_path else None,
+            'seed_job_texts': [str(Path(path)) for path in (seed_job_text_paths or [])],
         },
     }
 

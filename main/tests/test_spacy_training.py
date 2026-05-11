@@ -9,8 +9,10 @@ from django.test import SimpleTestCase
 from main.services.entities import JobProfile, ResumeProfile
 from main.services.matcher import ResumeJobMatcher
 from main.services.spacy_training import (
+    load_seed_job_text_examples,
     load_job_augmentation_examples,
     load_resume_examples,
+    normalize_job_label,
     train_textcat_model,
 )
 
@@ -71,6 +73,90 @@ class SpacyTrainingTests(SimpleTestCase):
 
             self.assertEqual(len(examples), 2)
             self.assertTrue(all(label == 'AI Engineer' for _, label in examples))
+
+    def test_normalize_job_label_strips_generic_seniority_for_known_non_tech_labels(self):
+        label = normalize_job_label(
+            'Senior Front Desk Associate',
+            known_labels={'Front Desk Associate', 'Recruitment Assistant'},
+        )
+
+        self.assertEqual(label, 'Front Desk Associate')
+
+    def test_load_seed_job_text_examples_parses_multi_role_hospitality_text(self):
+        with TemporaryDirectory() as temp_dir:
+            text_path = Path(temp_dir) / 'hospitality.txt'
+            text_path.write_text(
+                'Job Title: Barista\n'
+                'Company: Keystone Manpower Corporation\n'
+                'Duties and Responsibilities:\n'
+                '- Prepare beverages following recipes.\n\n'
+                'Bartender\n'
+                'Company: Keystone Manpower Corporation\n'
+                'Duties and Responsibilities:\n'
+                '- Mix ingredients to prepare cocktails and other drinks.\n',
+                encoding='utf-8',
+            )
+
+            examples, labels = load_seed_job_text_examples([text_path])
+
+            self.assertEqual(labels, ['Barista', 'Bartender'])
+            self.assertEqual({label for _, label in examples}, {'Barista', 'Bartender'})
+
+    def test_load_seed_job_text_examples_uses_expected_workspace_hospitality_labels(self):
+        text_path = Path(__file__).resolve().parents[2] / 'dataset' / 'hospitality_roles.txt'
+
+        examples, labels = load_seed_job_text_examples([text_path])
+
+        self.assertEqual(
+            labels,
+            [
+                'Barista',
+                'Bartender',
+                'Bellman',
+                'Bussing Person',
+                'Butler',
+                'Gym Attendant',
+                'Ingress & Egress Support',
+                'Kids Attendant',
+                'Kitchen Helper',
+            ],
+        )
+        self.assertEqual({label for _, label in examples}, set(labels))
+
+    def test_train_textcat_model_accepts_seeded_job_only_labels(self):
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            resume_csv = temp_path / 'resume.csv'
+            output_dir = temp_path / 'model'
+            seed_text = temp_path / 'hospitality.txt'
+
+            with resume_csv.open('w', encoding='utf-8', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=['job_position_name', 'career_objective', 'skills', 'matched_score'])
+                writer.writeheader()
+
+            seed_text.write_text(
+                'Job Title: Barista\n'
+                'Company: Keystone Manpower Corporation\n'
+                'Duties and Responsibilities:\n'
+                '- Prepare beverages following recipes.\n\n'
+                'Job Title: Bartender\n'
+                'Company: Keystone Manpower Corporation\n'
+                'Duties and Responsibilities:\n'
+                '- Mix ingredients to prepare cocktails and other drinks.\n',
+                encoding='utf-8',
+            )
+
+            metadata = train_textcat_model(
+                resume_csv_path=resume_csv,
+                output_dir=output_dir,
+                seed_job_text_paths=[seed_text],
+                epochs=1,
+                train_fraction=0.5,
+                seed=7,
+            )
+
+            self.assertEqual(sorted(metadata['labels']), ['Barista', 'Bartender'])
+            self.assertGreaterEqual(metadata['seed_job_examples'], 2)
 
     def test_train_textcat_model_writes_model_artifacts(self):
         with TemporaryDirectory() as temp_dir:
@@ -256,6 +342,29 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertLess(result.skill_match_score, 0.5)
         self.assertIn('Python', result.missing_skills)
+
+    def test_matcher_rebalances_soft_skills_for_non_tech_jobs(self):
+        resume = ResumeProfile(
+            raw_text='Front desk associate with guest service, communication, conflict resolution, scheduling, and reporting.',
+            skills=['Guest Service', 'Communication', 'Conflict Resolution', 'Scheduling'],
+            education=['Associate Degree'],
+            experience=['Front Desk Associate with 3 years of experience handling reservations and guest concerns'],
+            locations=['Manila'],
+        )
+        job = JobProfile(
+            title='Front Desk Associate',
+            raw_text='Guest service communication conflict resolution scheduling reception reservations hotel',
+            required_skills=['Guest Service', 'Communication', 'Conflict Resolution'],
+            preferred_skills=['Scheduling', 'Reception'],
+            experience_level='mid level',
+            location='Manila',
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertGreaterEqual(result.skill_match_score, 0.7)
+        self.assertGreaterEqual(result.overall_score, 0.65)
 
     def test_estimate_experience_level_uses_explicit_years(self):
         matcher = ResumeJobMatcher()

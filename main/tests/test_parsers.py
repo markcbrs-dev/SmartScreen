@@ -99,6 +99,19 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertIn('Bachelor of Science in Computer Science', education)
         self.assertNotIn('Worked on school enrollment systems as a software engineer', education)
 
+    def test_extract_experience_captures_non_tech_role_lines(self):
+        parser = ResumeParser()
+
+        experience = parser.extract_experience(
+            'Professional Experience\n'
+            'Front Desk Associate - Welcome Hotel\n'
+            'Handled guest inquiries, reservations, and daily reporting.\n\n'
+            'Skills\n'
+            'Customer service, scheduling\n'
+        )
+
+        self.assertTrue(any('Front Desk Associate' in line for line in experience))
+
 
 class JobDescriptionParserNerTests(SimpleTestCase):
     def test_extract_company_uses_org_entity_when_no_company_header_exists(self):
@@ -277,6 +290,60 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
             profile.responsibilities,
         )
 
+    def test_extract_job_title_recognizes_non_tech_role_titles(self):
+        parser = JobDescriptionParser()
+
+        title = parser.extract_job_title(
+            'We are hiring a Front Desk Associate to welcome guests and manage reservations.',
+            filename='front-desk-associate.docx',
+        )
+
+        self.assertEqual(title, 'Front Desk Associate')
+
+    def test_extract_job_title_recognizes_hospitality_titles_from_sample(self):
+        parser = JobDescriptionParser()
+
+        bellman_title = parser.extract_job_title(
+            'Bellman\nCompany: Keystone Manpower Corporation\nLocation: Quezon City',
+            filename='bellman.txt',
+        )
+        support_title = parser.extract_job_title(
+            'Ingress & Egress Support\nCompany: Keystone Manpower Corporation\nLocation: Quezon City',
+            filename='ingress-egress-support.txt',
+        )
+        kitchen_title = parser.extract_job_title(
+            'Kitchen Helper\nCompany: Keystone Manpower Corporation\nLocation: Quezon City',
+            filename='kitchen-helper.txt',
+        )
+
+        self.assertEqual(bellman_title, 'Bellman')
+        self.assertEqual(support_title, 'Ingress & Egress Support')
+        self.assertEqual(kitchen_title, 'Kitchen Helper')
+
+    def test_extract_skills_covers_barista_and_bartender_sample_terms(self):
+        parser = JobDescriptionParser()
+
+        required, preferred = parser.extract_skills(
+            'Job Title: Barista\n'
+            'Duties and Responsibilities:\n'
+            '- Give customers drink menus and answer their questions regarding ingredients.\n'
+            '- Take orders while paying attention to details.\n'
+            '- Prepare beverages following recipes.\n'
+            '- Check if brewing equipment operates properly and report any maintenance needs.\n'
+            '- Comply with health and safety regulations.\n\n'
+            'Job Title: Bartender\n'
+            '- Mix ingredients to prepare cocktails and other drinks.\n'
+            '- Present bar menu.\n'
+            '- Maintain liquor inventory and consumption.\n'
+            '- Collect payment for drinks served and balance all receipts.\n'
+        )
+
+        extracted = set(required + preferred)
+        self.assertIn('Barista Preparation', extracted)
+        self.assertIn('Bartending', extracted)
+        self.assertIn('Menu Knowledge', extracted)
+        self.assertIn('Inventory Management', extracted)
+
     def test_parse_splits_multi_job_description_document(self):
         parser = JobDescriptionParser()
 
@@ -290,6 +357,24 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
             'JOB TITLE\nBARTENDER\nDUTIES & RESPONSIBILITIES\n• Prepare drinks.'
         )
         self.assertEqual(result.title, 'Bartender')
+
+    def test_parse_text_splits_multi_role_hospitality_sample(self):
+        parser = JobDescriptionParser()
+        document_text = (
+            'Job Title: Barista\n'
+            'Company: Keystone Manpower Corporation\n'
+            'Duties and Responsibilities:\n'
+            '- Prepare beverages following recipes.\n\n'
+            'Bartender\n'
+            'Company: Keystone Manpower Corporation\n'
+            'Duties and Responsibilities:\n'
+            '- Mix ingredients to prepare cocktails and other drinks.\n'
+        )
+
+        profiles = parser.parse_text(document_text, filename='hospitality-roles.txt')
+
+        self.assertIsInstance(profiles, list)
+        self.assertEqual([profile.title for profile in profiles], ['Barista', 'Bartender'])
 
     def test_parse_returns_multiple_profiles_for_multi_jd_text(self):
         parser = JobDescriptionParser()

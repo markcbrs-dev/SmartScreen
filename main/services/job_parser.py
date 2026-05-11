@@ -97,8 +97,20 @@ class JobDescriptionParser:
         self.experience_levels = self._load_experience_levels() # Modify _load_experience_levels() for new seniority labels
         self.industries = self._load_industries()             # Modify _load_industries() to add new industry keywords
 
-    def parse(self, file_obj, filename: Optional[str] = None) -> JobProfile:
+    def parse(self, file_obj, filename: Optional[str] = None) -> JobProfile | list[JobProfile]:
         raw_text = self.extract_text(file_obj, filename=filename)
+        return self.parse_text(raw_text, filename=filename)
+
+    def parse_text(self, text: str, filename: Optional[str] = None) -> JobProfile | list[JobProfile]:
+        segments = self._split_job_documents(text)
+        profiles = [self._parse_single_text(segment, filename=filename) for segment in segments if segment.strip()]
+        if not profiles:
+            return self._parse_single_text(text, filename=filename)
+        if len(profiles) == 1:
+            return profiles[0]
+        return profiles
+
+    def _parse_single_text(self, raw_text: str, filename: Optional[str] = None) -> JobProfile:
         required_skills, preferred_skills = self.extract_skills(raw_text)
         title = self.extract_job_title(raw_text, filename=filename)
         return JobProfile(
@@ -241,7 +253,38 @@ class JobDescriptionParser:
             'designer',
             'administrator',
             'coordinator',
+            'assistant',
+            'associate',
+            'attendant',
+            'barista',
+            'bartender',
+            'bellman',
+            'busser',
+            'bussing',
+            'butler',
+            'cashier',
+            'clerk',
+            'crew',
+            'executive',
+            'egress',
+            'fitness',
+            'host',
+            'helper',
+            'housekeeper',
+            'ingress',
             'instructor',
+            'kitchen',
+            'officer',
+            'person',
+            'receptionist',
+            'recruiter',
+            'representative',
+            'salesperson',
+            'secretary',
+            'server',
+            'staff',
+            'support',
+            'supervisor',
             'teacher',
             'lecturer',
             'trainer',
@@ -267,21 +310,16 @@ class JobDescriptionParser:
                         role_keywords,
                     )
 
-        # Priority 2: try to infer the title from the filename (e.g. 'python_engineer.txt' → 'Python Engineer')
-        filename_candidate = self._extract_title_from_filename(filename, role_keywords)
-        if filename_candidate:
-            return filename_candidate
-
-        # Priority 3: scan for hiring language like 'seeking a Senior Developer'
+        # Priority 2: scan for hiring language like 'seeking a Senior Developer'
         summary_match = re.search(
-            r'\b(?:seeking|hiring|looking for)\b[^.\n]{0,80}?\b([A-Z][A-Za-z&/\- ]{2,80}\b(?:Professor|Engineer|Developer|Analyst|Manager|Specialist|Consultant|Scientist|Designer|Administrator|Coordinator))\b',
+            r'\b(?:seeking|hiring|looking for)\b[^.\n]{0,80}?\b([A-Z][A-Za-z&/\- ]{2,80}\b(?:Professor|Engineer|Developer|Analyst|Manager|Specialist|Consultant|Scientist|Designer|Administrator|Coordinator|Assistant|Associate|Attendant|Barista|Bartender|Bellman|Busser|Bussing\s+Person|Butler|Cashier|Clerk|Executive|Gym\s+Attendant|Host|Housekeeper|Ingress\s*&\s*Egress\s+Support|Kitchen\s+Helper|Officer|Receptionist|Recruiter|Representative|Secretary|Server|Staff|Supervisor|Teacher|Trainer))\b',
             text,
             re.IGNORECASE,
         )
         if summary_match:
             return self._normalize_title_candidate(summary_match.group(1), role_keywords)
 
-        # Priority 4 (last resort): scan first 40 lines for any line containing a known role keyword
+        # Priority 3: scan first 40 lines for any line containing a known role keyword
         for line in text.splitlines()[:40]:
             candidate = ' '.join(line.split()).strip(':- ')
             if not candidate or len(candidate) > 120:
@@ -289,6 +327,11 @@ class JobDescriptionParser:
             words = [word.strip('.,()').lower() for word in candidate.split()]
             if any(word in role_keywords for word in words):
                 return self._normalize_title_candidate(candidate, role_keywords)
+
+        # Priority 4: infer the title from the filename only if the text didn't produce one
+        filename_candidate = self._extract_title_from_filename(filename, role_keywords)
+        if filename_candidate:
+            return filename_candidate
         return None  # Title could not be inferred; will fall back to filename stem in replace_active_job_description()
 
     def extract_company(self, text: str) -> Optional[str]:
@@ -314,7 +357,8 @@ class JobDescriptionParser:
             r'Reports?\s+To\s*:\s*(.+)',
             r'Supervisor\s*:\s*(.+)',
         ]
-        for line in text.splitlines()[:60]:
+        lines = text.splitlines()[:60]
+        for index, line in enumerate(lines):
             candidate = line.strip()
             if not candidate or len(candidate) > 160:
                 continue
@@ -322,6 +366,11 @@ class JobDescriptionParser:
                 match = re.search(pattern, candidate, re.IGNORECASE)
                 if match:
                     value = normalize_whitespace(match.group(1))
+                    if value:
+                        return value.title()
+            if re.fullmatch(r'(?:Reporting\s+To|Reports?\s+To|Supervisor)\s*:', candidate, re.IGNORECASE):
+                for next_line in lines[index + 1:]:
+                    value = normalize_whitespace(next_line)
                     if value:
                         return value.title()
         return None
@@ -513,7 +562,10 @@ class JobDescriptionParser:
 
     def extract_industries(self, text: str) -> list[str]:
         text_lower = text.lower()
-        return sorted({industry.title() for industry in self.industries if re.search(r'\b' + re.escape(industry) + r'\b', text_lower)})
+        industries = {industry.title() for industry in self.industries if re.search(r'\b' + re.escape(industry) + r'\b', text_lower)}
+        if any(token in text_lower for token in ('hotel', 'guest', 'lounge', 'buffet', 'bar')):
+            industries.add('Hospitality')
+        return sorted(industries)
 
     def _extract_section_items(self, text: str, keywords: list[str], limit: int) -> list[str]:
         items = []
@@ -664,6 +716,9 @@ class JobDescriptionParser:
         return {
             'technology', 'software', 'it', 'finance', 'banking', 'healthcare', 'education', 'retail',
             'manufacturing', 'consulting', 'marketing', 'media', 'real estate', 'insurance', 'saas', 'admin',
+            'hospitality', 'tourism', 'food service', 'customer service', 'human resources', 'recruitment',
+            'bpo', 'call center', 'travel', 'property management', 'hotel', 'restaurant', 'food and beverage',
+            'fitness', 'recreation',
             'administrator', 'coordinator', 'professor', 'engineer', 'developer', 'analyst', 'specialist',
             'programmer', 'support', 'human resources', 'hr', 'operations', 'logistics'
         }
@@ -711,3 +766,63 @@ class JobDescriptionParser:
             return None
 
         return self._normalize_title_candidate(candidate.title(), role_keywords)
+
+    def _split_job_documents(self, text: str) -> list[str]:
+        lines = text.splitlines()
+        blocks = []
+        current_block = []
+
+        for index, line in enumerate(lines):
+            candidate = line.strip()
+            next_nonempty = ''
+            for lookahead in lines[index + 1:]:
+                if lookahead.strip():
+                    next_nonempty = lookahead.strip()
+                    break
+
+            if self._starts_new_job_block(candidate, next_nonempty) and self._has_substantial_job_content(current_block):
+                blocks.append('\n'.join(current_block).strip())
+                current_block = []
+
+            current_block.append(line)
+
+        if any(item.strip() for item in current_block):
+            blocks.append('\n'.join(current_block).strip())
+
+        return [block for block in blocks if block]
+
+    def _starts_new_job_block(self, line: str, next_nonempty: str) -> bool:
+        normalized = self._normalize_section_line(line)
+        next_normalized = self._normalize_section_line(next_nonempty)
+        if not normalized:
+            return False
+
+        if normalized == 'job description':
+            return next_normalized in {'job title', 'position', 'title', 'role'}
+
+        if re.match(r'^(job title|position|title|role)\s*:', line, re.IGNORECASE):
+            return True
+
+        if ':' in line:
+            return False
+
+        if next_normalized.startswith('company') or next_normalized.startswith('location') or next_normalized.startswith('employment type') or next_normalized.startswith('reporting to'):
+            return True
+
+        return False
+
+    def _has_substantial_job_content(self, lines: list[str]) -> bool:
+        normalized_lines = [self._normalize_section_line(line) for line in lines if line.strip()]
+        if not normalized_lines:
+            return False
+        return any(
+            normalized.startswith('company')
+            or normalized.startswith('location')
+            or normalized.startswith('employment type')
+            or normalized.startswith('reporting to')
+            or normalized.startswith('duties')
+            or normalized.startswith('responsibilities')
+            or normalized.startswith('qualifications')
+            or re.match(r'^(job title|position|title|role)\s*', normalized)
+            for normalized in normalized_lines
+        ) and len(normalized_lines) > 2

@@ -26,6 +26,14 @@ Useful options:
 .venv\Scripts\python.exe manage.py train_spacy_model --epochs 12 --min-match-score 0.6 --output-dir models\spacy_job_classifier
 ```
 
+The command now defaults to the files under `dataset/` and also seeds labels from `dataset/hospitality_roles.txt` when that file exists.
+
+To add more raw multi-job hospitality files, pass them directly:
+
+```powershell
+.venv\Scripts\python.exe manage.py train_spacy_model --seed-job-text dataset\hospitality_roles.txt --seed-job-text dataset\other_non_tech_roles.txt
+```
+
 If you want a faster experimental run before a full training pass:
 
 ```powershell
@@ -39,14 +47,15 @@ Generated files:
 
 ## Training Flow
 
-1. Load `resume_data.csv` and keep rows with a usable job label and `matched_score >= min_match_score`.
-2. Build a clean text sample from the structured resume columns.
-3. Load `job_dataset.csv` and `job_dataset.json` and add any rows whose titles can be normalized to one of the known resume labels.
-4. Deduplicate the examples.
-5. Split the dataset into train/dev sets.
-6. Train a blank English spaCy pipeline with the `textcat` component.
-7. Evaluate top-1 and top-3 accuracy on the held-out dev set.
-8. Save the trained pipeline and metadata.
+1. Load `dataset/resume_data.csv` and keep rows with a usable job label and `matched_score >= min_match_score`.
+2. Build clean text samples from the structured resume columns.
+3. Parse any seeded raw JD files, such as `dataset/hospitality_roles.txt`, into one or more job profiles and add their titles as labels.
+4. Load `dataset/job_dataset.csv` and `dataset/job_dataset.json` and add any rows whose titles can be normalized to one of the discovered labels.
+5. Deduplicate the examples.
+6. Split the dataset into train/dev sets.
+7. Train a blank English spaCy pipeline with the `textcat` component.
+8. Evaluate top-1 and top-3 accuracy on the held-out dev set.
+9. Save the trained pipeline and metadata.
 
 ## How The App Uses It
 

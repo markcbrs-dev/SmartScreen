@@ -206,6 +206,10 @@ class ResumeParser:
         keywords = [
             'experience', 'worked', 'employed', 'position', 'role', 'job', 'responsibilities',
             'achievements', 'developer', 'engineer', 'analyst', 'manager', 'lead', 'specialist',
+            'assistant', 'associate', 'attendant', 'barista', 'bartender', 'bellman', 'busser', 'bussing', 'butler', 'cashier', 'clerk',
+            'coordinator', 'customer service', 'front desk', 'host', 'housekeeping', 'officer',
+            'operations', 'receptionist', 'recruiter', 'representative', 'sales', 'scheduler',
+            'secretary', 'server', 'staff', 'supervisor', 'teacher', 'trainer', 'helper', 'kitchen', 'fitness', 'support',
         ]
         section_text = self._extract_first_section_text(
             text,

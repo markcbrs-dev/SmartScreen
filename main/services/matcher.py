@@ -86,6 +86,14 @@ def get_embedding_model():
 
 
 class ResumeJobMatcher:
+    _NON_TECH_ROLE_KEYWORDS = {
+        'assistant', 'associate', 'attendant', 'bartender', 'butler', 'cashier', 'clerk', 'coordinator',
+        'csr', 'customer service', 'driver', 'executive', 'front desk', 'guest', 'housekeeping', 'hr',
+        'human resources', 'manager', 'nurse', 'officer', 'operations', 'payroll', 'receptionist',
+        'recruiter', 'recruitment', 'reservation', 'retail', 'sales', 'scheduler', 'secretary',
+        'service crew', 'staff', 'store', 'supervisor', 'teacher', 'trainer', 'waiter', 'waitress',
+    }
+
     def __init__(self):
         self.vectorizer = None
         if TfidfVectorizer is not None:
@@ -129,6 +137,7 @@ class ResumeJobMatcher:
         normalized_resume_skills = canonicalize_skill_list(resume.skills or [])
         normalized_job_location = normalize_location_text(job.location)
         normalized_experience_level = normalize_experience_level(job.experience_level)
+        job_profile_type = self._classify_job_profile(job, effective_required, effective_preferred)
         skill_known = bool(effective_required or effective_preferred)
         experience_known = bool(normalized_experience_level)
         education_known = bool(job.education_requirements)
@@ -139,6 +148,7 @@ class ResumeJobMatcher:
             normalized_resume_skills,
             effective_required,
             effective_preferred,
+            job_profile_type=job_profile_type,
         )
         experience_score = self.calculate_experience_match(resume.experience, normalized_experience_level)
         education_score = self.calculate_education_match(resume.education, job.education_requirements)
@@ -148,7 +158,7 @@ class ResumeJobMatcher:
         resume_entity_text = self._build_entity_text(normalized_resume_skills, resume.experience, resume.education)
         job_entity_text = self._build_entity_text(
             effective_required + effective_preferred,
-            [],
+            list(job.responsibilities or []) + list(job.qualifications or []),
             job.education_requirements,
         )
         entity_keyword_score = self.calculate_keyword_similarity(
@@ -165,12 +175,33 @@ class ResumeJobMatcher:
         title_prediction_score = self.calculate_job_title_prediction_score(resume.raw_text, job.title)
 
         breakdown = {
+            'job_profile_type': 1.0 if job_profile_type == 'non_tech' else 0.0,
             'skill_score': skill_score,
             'experience_score': experience_score,
             'education_score': education_score,
             'keyword_score': keyword_score,
         }
-        if title_prediction_score is None:
+        if job_profile_type == 'non_tech':
+            if title_prediction_score is None:
+                components = [
+                    ('skill_score', skill_score if skill_known else None, 0.30),
+                    ('experience_score', experience_score if experience_known else None, 0.25),
+                    ('education_score', education_score if education_known else None, 0.10),
+                    ('keyword_score', keyword_score, 0.20),
+                    ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.10),
+                    ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
+                ]
+            else:
+                components = [
+                    ('skill_score', skill_score if skill_known else None, 0.25),
+                    ('experience_score', experience_score if experience_known else None, 0.22),
+                    ('education_score', education_score if education_known else None, 0.08),
+                    ('keyword_score', keyword_score, 0.15),
+                    ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.10),
+                    ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
+                    ('title_prediction_score', title_prediction_score, 0.15),
+                ]
+        elif title_prediction_score is None:
             components = [
                 ('skill_score', skill_score if skill_known else None, 0.4),
                 ('experience_score', experience_score if experience_known else None, 0.2),
@@ -222,6 +253,27 @@ class ResumeJobMatcher:
             breakdown=breakdown,
         )
 
+    def _classify_job_profile(
+        self,
+        job: JobProfile,
+        required_skills: Iterable[str],
+        preferred_skills: Iterable[str],
+    ) -> str:
+        combined_text = ' '.join(
+            part for part in [job.title or '', job.raw_text or '', ' '.join(required_skills or []), ' '.join(preferred_skills or [])]
+            if part
+        ).lower()
+        if any(keyword in combined_text for keyword in self._NON_TECH_ROLE_KEYWORDS):
+            return 'non_tech'
+
+        required_hard, required_soft = split_skills_by_category(required_skills or [])
+        preferred_hard, preferred_soft = split_skills_by_category(preferred_skills or [])
+        hard_count = len(required_hard) + len(preferred_hard)
+        soft_count = len(required_soft) + len(preferred_soft)
+        if soft_count > hard_count:
+            return 'non_tech'
+        return 'tech'
+
     def _calculate_weighted_score(
         self,
         components: list[tuple[str, Optional[float], float]],
@@ -268,6 +320,7 @@ class ResumeJobMatcher:
         resume_skills: Iterable[str],
         job_required_skills: Iterable[str],
         job_preferred_skills: Iterable[str],
+        job_profile_type: str = 'tech',
     ) -> tuple[float, list[str], list[str]]:
         resume_list = canonicalize_skill_list(resume_skills or [])
         required = canonicalize_skill_list(job_required_skills or [])
@@ -283,12 +336,20 @@ class ResumeJobMatcher:
         required_hard, required_soft = split_skills_by_category(required)
         preferred_hard, preferred_soft = split_skills_by_category(preferred)
 
-        component_specs = [
-            (resume_hard, required_hard, 0.70, True),
-            (resume_hard, preferred_hard, 0.15, False),
-            (resume_soft, required_soft, 0.10, True),
-            (resume_soft, preferred_soft, 0.05, False),
-        ]
+        if job_profile_type == 'non_tech':
+            component_specs = [
+                (resume_hard, required_hard, 0.40, True),
+                (resume_hard, preferred_hard, 0.15, False),
+                (resume_soft, required_soft, 0.30, True),
+                (resume_soft, preferred_soft, 0.15, False),
+            ]
+        else:
+            component_specs = [
+                (resume_hard, required_hard, 0.70, True),
+                (resume_hard, preferred_hard, 0.15, False),
+                (resume_soft, required_soft, 0.10, True),
+                (resume_soft, preferred_soft, 0.05, False),
+            ]
 
         total_weight = 0.0
         weighted_score = 0.0

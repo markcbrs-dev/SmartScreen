@@ -32,20 +32,27 @@ class Command(BaseCommand):
     help = 'Train the spaCy text-classification model used for job-title prediction.'
 
     def add_arguments(self, parser):
+        dataset_dir = Path(settings.BASE_DIR) / 'dataset'
         parser.add_argument(
             '--resume-data',
-            default=str(Path(settings.BASE_DIR) / 'resume_data.csv'),
+            default=str(dataset_dir / 'resume_data.csv'),
             help='Path to the labeled resume CSV file.',
         )
         parser.add_argument(
             '--job-data',
-            default=str(Path(settings.BASE_DIR) / 'job_dataset.csv'),
+            default=str(dataset_dir / 'job_dataset.csv'),
             help='Optional path to the job CSV file used for augmentation.',
         )
         parser.add_argument(
             '--job-json',
-            default=str(Path(settings.BASE_DIR) / 'job_dataset.json'),
+            default=str(dataset_dir / 'job_dataset.json'),
             help='Optional path to the job JSON file used for augmentation.',
+        )
+        parser.add_argument(
+            '--seed-job-text',
+            action='append',
+            default=[str(dataset_dir / 'hospitality_roles.txt')],
+            help='Optional raw TXT or DOCX JD file to parse into seeded labels/examples. Can be passed multiple times.',
         )
         parser.add_argument(
             '--output-dir',
@@ -81,6 +88,7 @@ class Command(BaseCommand):
             output_dir=options['output_dir'],
             job_csv_path=options.get('job_data') or None,
             job_json_path=options.get('job_json') or None,
+            seed_job_text_paths=options.get('seed_job_text') or None,
             min_match_score=options['min_match_score'],
             train_fraction=options['train_fraction'],
             epochs=options['epochs'],
