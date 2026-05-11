@@ -570,12 +570,19 @@ def serve_resume(request, filename):
     Only serves files that actually belong to a known Applicant record.
     """
     safe_name = os.path.basename(filename)  # strip any directory components
-    if not Applicant.objects.filter(resume=f'resumes/{safe_name}').exists():
+    applicant = next(
+        (
+            candidate
+            for candidate in Applicant.objects.all().only('id', 'resume')
+            if candidate.resume and os.path.basename(candidate.resume.name) == safe_name
+        ),
+        None,
+    )
+    if applicant is None or not applicant.resume:
         raise Http404
-    file_path = settings.MEDIA_ROOT / 'resumes' / safe_name
-    if not file_path.is_file():
+    if not applicant.resume.storage.exists(applicant.resume.name):
         raise Http404
-    return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=safe_name)
+    return FileResponse(applicant.resume.open('rb'), as_attachment=True, filename=safe_name)
 
 # -----------------------------------------------------------------------
 # APPLY VIEW (public applicant form)

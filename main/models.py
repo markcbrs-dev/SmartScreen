@@ -32,6 +32,8 @@ from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 
+from .security import EncryptedJSONField, EncryptedResumeFileField, EncryptedTextField
+
 # --- MONITORING MODEL ---
 
 class HRActivityLog(models.Model):
@@ -92,22 +94,22 @@ class Applicant(models.Model):
         ('INTERVIEW', 'For Interview'),
     ]
 
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    contact_number = models.CharField(max_length=50)
-    email = models.EmailField()
-    resume = models.FileField(upload_to='resumes/')
+    first_name = EncryptedTextField(default='')
+    last_name = EncryptedTextField(default='')
+    contact_number = EncryptedTextField(default='')
+    email = EncryptedTextField(default='')
+    resume = EncryptedResumeFileField(upload_to='resumes/')
     applied_job = models.ForeignKey('JobDescription', null=True, blank=True, on_delete=models.SET_NULL, related_name='applicants')
     job_preference_locked = models.BooleanField(default=False)
     position = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
     match_score = models.IntegerField(default=0)  # 0–100; recalculated by recruitment.refresh_applicant_match
-    resume_text = models.TextField(blank=True, default='')   # raw extracted text from uploaded resume
-    parsed_skills = models.JSONField(default=list, blank=True)     # list[str] — populated by ResumeParser
-    parsed_education = models.JSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
-    parsed_experience = models.JSONField(default=list, blank=True) # list[str] — populated by ResumeParser
-    parsed_locations = models.JSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
-    match_notes = models.JSONField(default=dict, blank=True)  # full breakdown from JobMatchResult; see services/matcher.py
+    resume_text = EncryptedTextField(blank=True, default='')   # raw extracted text from uploaded resume
+    parsed_skills = EncryptedJSONField(default=list, blank=True)     # list[str] — populated by ResumeParser
+    parsed_education = EncryptedJSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
+    parsed_experience = EncryptedJSONField(default=list, blank=True) # list[str] — populated by ResumeParser
+    parsed_locations = EncryptedJSONField(default=list, blank=True)  # list[str] — populated by ResumeParser
+    match_notes = EncryptedJSONField(default=dict, blank=True)  # full breakdown from JobMatchResult; see services/matcher.py
     created_at = models.DateTimeField(auto_now_add=True)
 
     history = HistoricalRecords()

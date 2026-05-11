@@ -5,6 +5,7 @@ from unittest import skipUnless
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase
 from django.urls import reverse
 
@@ -166,7 +167,7 @@ class ApplicantFlowTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Application submitted successfully.')
 		self.assertNotContains(response, 'Best match:')
-		applicant = Applicant.objects.get(email='jane@example.com')
+		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.position, job.title)
 		self.assertEqual(applicant.applied_job, job)
 		self.assertTrue(applicant.job_preference_locked)
@@ -205,7 +206,7 @@ class ApplicantFlowTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Application submitted successfully.')
-		applicant = Applicant.objects.get(email='barack@example.com')
+		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.applied_job, job)
 		self.assertIn('Seattle', applicant.parsed_locations)
 		self.assertIn('Python', applicant.parsed_skills)
@@ -507,7 +508,7 @@ class JobUploadTests(TestCase):
 		response = self.client.get(reverse('dashboard'))
 
 		self.assertEqual(response.status_code, 200)
-		applicant = Applicant.objects.get(email='mark@example.com')
+		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.position, 'Computer Science Professor')
 		self.assertIsNotNone(applicant.applied_job)
 		self.assertGreater(applicant.match_score, 0)
@@ -546,7 +547,7 @@ class JobUploadTests(TestCase):
 		response = self.client.get(reverse('dashboard'))
 
 		self.assertEqual(response.status_code, 200)
-		applicant = Applicant.objects.get(email='jane-selected@example.com')
+		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.applied_job, selected_job)
 		self.assertEqual(applicant.position, selected_job.title)
 
@@ -681,6 +682,33 @@ class ResumeAccessTests(TestCase):
 		response = self.client.get(self.applicant.resume.url)
 
 		self.assertEqual(response.status_code, 404)
+
+	def test_sensitive_applicant_data_is_encrypted_at_rest(self):
+		self.applicant.resume_text = 'Python resume text with private details'
+		self.applicant.parsed_skills = ['Python', 'Django']
+		self.applicant.parsed_education = ['Bachelor of Science in Computer Science']
+		self.applicant.match_notes = {'overall_score': 91, 'matching_skills': ['Python']}
+		self.applicant.save(update_fields=['resume_text', 'parsed_skills', 'parsed_education', 'match_notes'])
+
+		with connection.cursor() as cursor:
+			cursor.execute(
+				'SELECT first_name, email, resume, resume_text, parsed_skills, match_notes FROM main_applicant WHERE id = %s',
+				[self.applicant.id],
+			)
+			row = cursor.fetchone()
+
+		self.assertIsNotNone(row)
+		self.assertNotEqual(row[0], 'Secure')
+		self.assertNotEqual(row[1], 'secure-applicant@example.com')
+		self.assertNotEqual(row[3], 'Python resume text with private details')
+		self.assertNotEqual(row[4], '["Python", "Django"]')
+		self.assertNotEqual(row[5], '{"overall_score": 91, "matching_skills": ["Python"]}')
+		self.assertTrue(str(row[2]).startswith('gAAAA'))
+
+		with open(self.applicant.resume.path, 'rb') as stored_file:
+			stored_bytes = stored_file.read()
+
+		self.assertTrue(stored_bytes.startswith(b'gAAAA'))
 
 
 class AuthViewTests(TestCase):

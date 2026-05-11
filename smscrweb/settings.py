@@ -158,6 +158,11 @@ LOGIN_URL = 'login'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Data protection key used for app-layer encryption of sensitive applicant
+# records and uploaded resumes. Falls back to SECRET_KEY to keep deployment
+# simple, but production should set SMARTSCREEN_DATA_KEY separately.
+SMARTSCREEN_DATA_KEY = os.environ.get('SMARTSCREEN_DATA_KEY', SECRET_KEY)
+
 # Maximum upload size (bytes)
 MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 MAX_JOB_DESCRIPTION_SIZE = 512 * 1024  # 512 KB
