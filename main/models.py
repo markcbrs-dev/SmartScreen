@@ -101,7 +101,7 @@ class Applicant(models.Model):
     resume = EncryptedResumeFileField(upload_to='resumes/', max_length=512)
     applied_job = models.ForeignKey('JobDescription', null=True, blank=True, on_delete=models.SET_NULL, related_name='applicants')
     job_preference_locked = models.BooleanField(default=False)
-    position = models.CharField(max_length=50, blank=True, default='')
+    position = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
     match_score = models.IntegerField(default=0)  # 0–100; recalculated by recruitment.refresh_applicant_match
     resume_text = EncryptedTextField(blank=True, default='')   # raw extracted text from uploaded resume
@@ -144,14 +144,14 @@ class Applicant(models.Model):
 # in job_parser.py, and update update_job_from_profile() in recruitment.py.
 # -----------------------------------------------------------------------
 class JobDescription(models.Model):
-    title = models.CharField(max_length=50)
+    title = models.CharField(max_length=200)
     description_file = models.FileField(upload_to='jobs/')
-    reporting_to = models.CharField(max_length=50, blank=True, default='')
-    company = models.CharField(max_length=50, blank=True, default='')
-    location = models.CharField(max_length=50, blank=True, default='')
-    employment_type = models.CharField(max_length=50, blank=True, default='')
-    experience_level = models.CharField(max_length=50, blank=True, default='')
-    salary_range = models.CharField(max_length=50, blank=True, default='')
+    reporting_to = models.CharField(max_length=200, blank=True, default='')
+    company = models.CharField(max_length=200, blank=True, default='')
+    location = models.CharField(max_length=200, blank=True, default='')
+    employment_type = models.CharField(max_length=100, blank=True, default='')
+    experience_level = models.CharField(max_length=100, blank=True, default='')
+    salary_range = models.CharField(max_length=100, blank=True, default='')
     remote_option = models.BooleanField(default=False)
     required_skills = models.JSONField(default=list, blank=True)
     preferred_skills = models.JSONField(default=list, blank=True)
