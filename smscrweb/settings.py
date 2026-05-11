@@ -61,7 +61,8 @@ _raw_hosts = os.environ.get('ALLOWED_HOSTS', '')
 ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
 
 
-CSRF_TRUSTED_ORIGINS = ['*']  # Allow all origins for CSRF (adjust in production if needed)
+_raw_csrf_trusted_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = [h.strip() for h in _raw_csrf_trusted_origins.split(',') if h.strip()]
 
 # Application definition
 
