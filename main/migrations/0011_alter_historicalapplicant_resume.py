@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='historicalapplicant',
             name='resume',
-            field=models.TextField(max_length=100),
+            field=models.TextField(max_length=512),
         ),
     ]

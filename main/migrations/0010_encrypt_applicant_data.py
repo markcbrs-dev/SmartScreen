@@ -70,6 +70,11 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AlterField(
+            model_name='applicant',
+            name='resume',
+            field=main.security.EncryptedResumeFileField(max_length=512, upload_to='resumes/'),
+        ),
+        migrations.AlterField(
             model_name='historicalapplicant',
             name='resume',
             field=main.security.EncryptedTextField(default=''),
