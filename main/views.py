@@ -352,7 +352,7 @@ def logout_view(request):
         return redirect('dashboard')
     auth_logout(request)
     messages.success(request, 'Logged out successfully.')
-    return redirect('login')
+    return redirect('home')
 
 # -----------------------------------------------------------------------
 # DASHBOARD VIEW
