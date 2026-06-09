@@ -135,6 +135,21 @@ class ApplicantFlowTests(TestCase):
 		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
 		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
 
+	def test_apply_page_preserves_leading_dashes_in_job_description(self):
+		replace_active_job_description(build_text_file(
+			'faculty-role.txt',
+			'Job Title: Computer Science Faculty\n'
+			'About the job:\n'
+			'- Can greet customers politely\n'
+			'- Can code effectively\n',
+		))
+
+		response = self.client.get(reverse('apply'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<li>- Can greet customers politely</li>', html=False)
+		self.assertContains(response, '<li>- Can code effectively</li>', html=False)
+
 	def test_apply_job_details_endpoint_returns_current_uploaded_jobs(self):
 		first_job = replace_active_job_description(build_text_file(
 			'front-desk-associate.txt',
@@ -170,10 +185,6 @@ class ApplicantFlowTests(TestCase):
 		response = self.client.post(
 			reverse('apply'),
 			{
-				'first_name': 'Jane',
-				'last_name': 'Applicant',
-				'contact': '09123456789',
-				'email': 'jane@example.com',
 				'job_id': str(job.id),
 				'resume': build_docx_file(
 					'resume.docx',
@@ -194,6 +205,10 @@ class ApplicantFlowTests(TestCase):
 		self.assertContains(response, 'Application submitted successfully.')
 		self.assertNotContains(response, 'Best match:')
 		applicant = Applicant.objects.get()
+		self.assertEqual(applicant.first_name, 'Jane')
+		self.assertEqual(applicant.last_name, 'Applicant')
+		self.assertEqual(applicant.contact_number, '+63 912 345 6789')
+		self.assertEqual(applicant.email, 'jane@example.com')
 		self.assertEqual(applicant.position, job.title)
 		self.assertEqual(applicant.applied_job, job)
 		self.assertTrue(applicant.job_preference_locked)
@@ -210,10 +225,6 @@ class ApplicantFlowTests(TestCase):
 		response = self.client.post(
 			reverse('apply'),
 			{
-				'first_name': 'Barack',
-				'last_name': 'Obama',
-				'contact': '09123456780',
-				'email': 'barack@example.com',
 				'job_id': str(job.id),
 				'resume': build_docx_file(
 					'barack-obama-resume.docx',
@@ -233,10 +244,49 @@ class ApplicantFlowTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Application submitted successfully.')
 		applicant = Applicant.objects.get()
+		self.assertEqual(applicant.first_name, 'Barack')
+		self.assertEqual(applicant.last_name, 'Obama')
+		self.assertEqual(applicant.contact_number, '+63 912 345 6780')
+		self.assertEqual(applicant.email, 'barack@example.com')
 		self.assertEqual(applicant.applied_job, job)
 		self.assertIn('Seattle', applicant.parsed_locations)
 		self.assertIn('Python', applicant.parsed_skills)
 		self.assertGreater(applicant.match_score, 0)
+
+	def test_apply_page_hides_manual_identity_fields(self):
+		response = self.client.get(reverse('apply'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertNotContains(response, 'label for="contact"', html=False)
+		self.assertNotContains(response, 'name="first_name"', html=False)
+		self.assertNotContains(response, 'name="last_name"', html=False)
+		self.assertNotContains(response, 'name="contact"', html=False)
+		self.assertNotContains(response, 'name="email"', html=False)
+
+	def test_apply_requires_name_contact_and_email_from_resume(self):
+		job = replace_active_job_description(build_text_file(
+			'computer-science-professor.txt',
+			'Job Title: Computer Science Professor\nCompany: SmartScreen University\nLocation: Manila\nResponsibilities\nTeach computer science courses\nQualifications\nBachelor of Science in Computer Science\nPython Java JavaScript Artificial Intelligence Data Science teaching research',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'job_id': str(job.id),
+				'resume': build_docx_file(
+					'resume-missing-contact.docx',
+					[
+						'Jane Applicant',
+						'Python Java JavaScript teaching and research experience',
+						'Bachelor of Science in Computer Science',
+					],
+				),
+			},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'We could not extract the following from the uploaded resume: contact number, email.')
+		self.assertFalse(Applicant.objects.exists())
 
 
 class JobUploadTests(TestCase):
@@ -392,8 +442,9 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, '<p class="db-job-description-heading">About the job:</p>', html=False)
 		self.assertContains(response, 'Teach undergraduate IT courses.')
 		self.assertContains(response, 'Prepare lesson plans and assessments.')
-		self.assertContains(response, '<p class="db-job-description-copy">Teach undergraduate IT courses.</p>', html=False)
-		self.assertContains(response, '<p class="db-job-description-copy">Prepare lesson plans and assessments.</p>', html=False)
+		self.assertContains(response, '<ul class="db-job-detail-list">', html=False)
+		self.assertContains(response, '<li>Teach undergraduate IT courses.</li>', html=False)
+		self.assertContains(response, '<li>Prepare lesson plans and assessments.</li>', html=False)
 
 	def test_dashboard_preserves_docx_bold_text_in_description_preview(self):
 		response = self.client.post(
@@ -413,7 +464,7 @@ class JobUploadTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, '<p class="db-job-description-copy">Teach <strong>Python</strong> and AI courses.</p>', html=False)
+		self.assertContains(response, '<li>Teach <strong>Python</strong> and AI courses.</li>', html=False)
 
 	def test_dashboard_preserves_docx_bold_only_lines_in_description_preview(self):
 		response = self.client.post(
@@ -592,6 +643,59 @@ class JobUploadTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(JobDescription.objects.count(), 0)
 		self.assertContains(response, 'Uploaded job description removed.')
+
+	def test_dashboard_updates_uploaded_job_description_from_edit_action(self):
+		job = replace_active_job_description(build_text_file(
+			'backend-role.txt',
+			'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nPython Django APIs',
+		))
+		Applicant.objects.create(
+			first_name='Jamie',
+			last_name='Applicant',
+			contact_number='+63 912 345 0000',
+			email='jamie@example.com',
+			resume=build_docx_file(
+				'jamie.docx',
+				[
+					'Jamie Applicant',
+					'jamie@example.com',
+					'+63 912 345 0000',
+				],
+			),
+			applied_job=job,
+			position=job.title,
+		)
+
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'update_job_description',
+				'job_id': str(job.id),
+				'title': 'Senior Backend Engineer',
+				'company': 'SmartScreen Labs PH',
+				'location': 'Manila',
+				'employment_type': 'Full-Time',
+				'reporting_to': 'Engineering Manager',
+				'raw_text': 'Job Title: Senior Backend Engineer\nCompany: SmartScreen Labs PH\nLocation: Manila\nReporting To: Engineering Manager\nAbout the job:\nBuild resilient APIs and mentor backend developers.\nJob Requirements:\n- Python Django APIs\n- Can mentor backend developers',
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		job.refresh_from_db()
+		self.assertEqual(job.title, 'Senior Backend Engineer')
+		self.assertEqual(job.company, 'SmartScreen Labs PH')
+		self.assertEqual(job.location, 'Manila')
+		self.assertEqual(job.employment_type, 'Full-Time')
+		self.assertEqual(job.reporting_to, 'Engineering Manager')
+		self.assertIn('Build resilient APIs and mentor backend developers.', job.raw_text)
+		self.assertContains(response, '<p class="db-job-description-heading">Job Requirements:</p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-copy">- Python Django APIs</p>', html=False)
+		self.assertContains(response, 'Build resilient APIs and mentor backend developers.')
+		self.assertContains(response, 'Updated job description: Senior Backend Engineer.')
+		self.assertContains(response, 'data-dialog-id="jobEditDialog-{}'.format(job.id), html=False)
+		applicant = Applicant.objects.get()
+		self.assertEqual(applicant.position, 'Senior Backend Engineer')
 
 	def test_dashboard_renders_contact_dialog_actions_in_status_tab(self):
 		Applicant.objects.create(

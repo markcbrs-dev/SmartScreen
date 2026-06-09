@@ -142,7 +142,7 @@ class ResumeJobMatcher:
         experience_known = bool(normalized_experience_level)
         education_known = bool(job.education_requirements)
         location_known = self._job_has_location_requirement(normalized_job_location)
-        remote_known = self._job_has_work_mode_requirement(job.raw_text or '', job.remote_option)
+        remote_known = self._job_has_work_mode_requirement(job.raw_text or '')
 
         skill_score, matching_skills, missing_skills = self.calculate_skill_match(
             normalized_resume_skills,
@@ -171,7 +171,7 @@ class ResumeJobMatcher:
         else:
             keyword_score = entity_keyword_score
         location_match = self.check_location_match(resume.locations, normalized_job_location) if location_known else False
-        remote_match = self.check_remote_match(resume.raw_text, job.raw_text or '', job.remote_option) if remote_known else False
+        remote_match = self.check_remote_match(resume.raw_text, job.raw_text or '') if remote_known else False
         title_prediction_score = self.calculate_job_title_prediction_score(resume.raw_text, job.title)
 
         breakdown = {
@@ -297,9 +297,7 @@ class ResumeJobMatcher:
         location = job_location.lower()
         return not any(token in location for token in ('remote', 'hybrid', 'anywhere'))
 
-    def _job_has_work_mode_requirement(self, job_text: str, job_remote_option: bool) -> bool:
-        if job_remote_option:
-            return True
+    def _job_has_work_mode_requirement(self, job_text: str) -> bool:
         text = (job_text or '').lower()
         return any(token in text for token in ('onsite', 'on-site', 'on site', 'hybrid', 'remote', 'work from home', 'wfh'))
 
@@ -459,9 +457,7 @@ class ResumeJobMatcher:
             for item in resume_locations
         )
 
-    def check_remote_match(self, resume_text: str, job_text: str, job_remote_option: bool) -> bool:
-        if job_remote_option:
-            return True
+    def check_remote_match(self, resume_text: str, job_text: str) -> bool:
         job_text = (job_text or '').lower()
         if not any(token in job_text for token in ('onsite', 'on-site', 'on site', 'hybrid', 'remote', 'work from home', 'wfh')):
             return False

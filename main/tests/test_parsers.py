@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from main.services.job_parser import JobDescriptionParser
 from main.services.resume_parser import ResumeParser
@@ -72,6 +74,42 @@ class ResumeParserNerTests(SimpleTestCase):
 
 
 class ResumeParserExtractionTests(SimpleTestCase):
+    def test_guess_name_accepts_name_label_prefix(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'Name: Jane Applicant\n'
+            'jane@example.com\n'
+            '09123456789\n'
+            'Python Developer\n'
+        )
+
+        self.assertEqual(full_name, 'Jane Applicant')
+
+    def test_guess_name_skips_role_title_and_normalizes_last_name_first(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'Python Developer\n'
+            'Applicant, Jane Marie\n'
+            'jane@example.com\n'
+            '+63 912 345 6789\n'
+        )
+
+        self.assertEqual(full_name, 'Jane Marie Applicant')
+
+    def test_guess_name_combines_adjacent_top_lines_for_split_full_name(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'JUAN A.\n'
+            'DELA CRUZ\n'
+            'juan@example.com\n'
+            '+63 912 345 6789\n'
+        )
+
+        self.assertEqual(full_name, 'JUAN A. DELA CRUZ')
+
     def test_extract_skills_normalizes_common_aliases(self):
         parser = ResumeParser()
 
@@ -82,6 +120,119 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertIn('Object-Oriented Programming', skills)
         self.assertIn('REST API', skills)
         self.assertIn('Machine Learning', skills)
+
+    def test_extract_skills_prefers_skills_section_over_ambiguous_full_text_aliases(self):
+        parser = ResumeParser()
+
+        skills = parser.extract_skills(
+            'Career Objective\n'
+            'Grow in IT and go above and beyond for customers.\n\n'
+            'Skills\n'
+            'Python\n'
+            'Django\n'
+        )
+
+        self.assertEqual(skills, ['Python', 'Django'])
+
+    def test_extract_skills_ignores_ambiguous_full_text_aliases_without_explicit_phrases(self):
+        parser = ResumeParser()
+
+        skills = parser.extract_skills(
+            'Motivated applicant ready to grow in IT and go above and beyond for customers.\n'
+            'Strong communication and teamwork skills.\n'
+        )
+
+        self.assertNotIn('Information Technology', skills)
+        self.assertNotIn('Go', skills)
+
+    def test_parse_uses_resume_parser_pro_as_fallback_for_basic_fields(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='Professional Summary\nCustomer-focused applicant'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={
+                'name': 'Jane Applicant',
+                'email': ['jane@example.com'],
+                'phone_number': ['09123456789'],
+            }):
+                profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Jane Applicant')
+        self.assertEqual(profile.email, 'jane@example.com')
+        self.assertEqual(profile.phone, '+63 912 345 6789')
+
+    def test_extract_phone_normalizes_supported_philippine_mobile_formats(self):
+        parser = ResumeParser()
+
+        self.assertEqual(parser.extract_phone('09123456789'), '+63 912 345 6789')
+        self.assertEqual(parser.extract_phone('+63 912 345 6789'), '+63 912 345 6789')
+        self.assertEqual(parser.extract_phone('639123456789'), '+63 912 345 6789')
+
+    def test_parse_prefers_resume_parser_pro_name_over_local_fallback(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='Python Developer\nJane Applicant\njane@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'Applicant, Jane'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], 'Python Developer')):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Jane Applicant')
+
+    def test_parse_normalizes_all_caps_name_from_resume_parser_pro(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='JUAN A. DELA CRUZ\njuan@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'JUAN A. DELA CRUZ'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
+
+    def test_parse_normalizes_all_caps_name_from_fallback_extraction(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='JUAN A. DELA CRUZ\njuan@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], 'JUAN A. DELA CRUZ')):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
+
+    def test_parse_uses_fallback_when_resume_parser_pro_only_returns_first_name(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='JUAN A. DELA CRUZ\njuan@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'Juan'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], 'JUAN A. DELA CRUZ')):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
+
+    def test_parse_prefers_fallback_when_it_contains_more_complete_name_parts(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='JUAN A. DELA CRUZ\njuan@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'Juan Dela Cruz'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], 'JUAN A. DELA CRUZ')):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
+
+    def test_parse_uses_combined_top_lines_when_primary_name_is_partial(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(parser, 'extract_text', return_value='JUAN A.\nDELA CRUZ\njuan@example.com'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'Juan'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], 'JUAN A. DELA CRUZ')):
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
 
     def test_extract_education_prefers_education_section_over_keyword_noise(self):
         parser = ResumeParser()
@@ -204,6 +355,29 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
             profile.responsibilities,
             ['• Handle guest requests', '• Prepare daily reports'],
         )
+
+    def test_extract_responsibilities_preserves_docx_numbering_bullets_without_bullet_style_name(self):
+        parser = JobDescriptionParser()
+        document = Document()
+        document.add_paragraph('Responsibilities')
+        bullet_paragraph = document.add_paragraph('Handle guest requests', style='Normal')
+        paragraph_properties = bullet_paragraph._p.get_or_add_pPr()
+        numbering_properties = OxmlElement('w:numPr')
+        level = OxmlElement('w:ilvl')
+        level.set(qn('w:val'), '0')
+        num_id = OxmlElement('w:numId')
+        num_id.set(qn('w:val'), '1')
+        numbering_properties.append(level)
+        numbering_properties.append(num_id)
+        paragraph_properties.append(numbering_properties)
+
+        buffer = BytesIO()
+        document.save(buffer)
+        buffer.seek(0)
+
+        profile = parser.parse(buffer, filename='responsibilities.docx')
+
+        self.assertEqual(profile.responsibilities, ['• Handle guest requests'])
 
     def test_extract_employment_type_preserves_full_time_and_part_time(self):
         parser = JobDescriptionParser()

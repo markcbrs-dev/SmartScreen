@@ -683,7 +683,14 @@ class JobDescriptionParser:
     def _is_bullet_paragraph(self, paragraph) -> bool:
         style_name = getattr(getattr(paragraph, 'style', None), 'name', '') or ''
         lowered = style_name.lower()
-        return 'list bullet' in lowered or 'bullet' in lowered
+        if 'list bullet' in lowered or 'bullet' in lowered:
+            return True
+
+        paragraph_properties = getattr(getattr(paragraph, '_p', None), 'pPr', None)
+        if paragraph_properties is not None and getattr(paragraph_properties, 'numPr', None) is not None:
+            return True
+
+        return False
 
     def _normalize_section_line(self, line: str) -> str:
         return re.sub(r'\*\*(.*?)\*\*', r'\1', line).strip().rstrip(':').lower()

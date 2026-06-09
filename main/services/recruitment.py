@@ -187,7 +187,6 @@ def update_job_from_profile(job, profile: JobProfile) -> None:
     job.employment_type = profile.employment_type or ''
     job.experience_level = profile.experience_level or ''
     job.salary_range = profile.salary_range or ''
-    job.remote_option = profile.remote_option
     job.required_skills = profile.required_skills
     job.preferred_skills = profile.preferred_skills
     job.responsibilities = profile.responsibilities
@@ -299,7 +298,6 @@ def build_job_profile_from_model(job) -> JobProfile:
         employment_type=job.employment_type,
         experience_level=job.experience_level,
         salary_range=job.salary_range,
-        remote_option=job.remote_option,
         required_skills=list(job.required_skills or []),
         preferred_skills=list(job.preferred_skills or []),
         responsibilities=list(job.responsibilities or []),

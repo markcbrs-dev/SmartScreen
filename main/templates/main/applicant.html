@@ -508,7 +508,6 @@
 
         <p class="eyebrow">Applicant Submission</p>
         <h2>Upload your resume</h2>
-        <p class="intro">Fill-up the following fields and submit your application.</p>
 
         {% if messages %}
           <div class="messages">
@@ -517,24 +516,6 @@
             {% endfor %}
           </div>
         {% endif %}
-
-        <div class="field">
-          <label>Name</label>
-          <div class="name-row">
-            <input id="firstName" name="first_name" type="text" autocomplete="given-name" placeholder="First name" value="{{ request.POST.first_name|default:'' }}" required />
-            <input id="lastName" name="last_name" type="text" autocomplete="family-name" placeholder="Last name" value="{{ request.POST.last_name|default:'' }}" required />
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="contact">Contact Number</label>
-          <input id="contact" name="contact" type="tel" inputmode="numeric" pattern="[0-9]{11}" maxlength="11" placeholder="09XXXXXXXXX" value="{{ request.POST.contact|default:'' }}" required />
-        </div>
-
-        <div class="field">
-          <label for="email">Email</label>
-          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" value="{{ request.POST.email|default:'' }}" required />
-        </div>
 
         <div class="field">
           <label for="jobId">Target Position</label>
@@ -572,7 +553,6 @@
           </div>
           {% if active_job %}
             <div class="job-pills">
-              {% if active_job.remote_option %}<span class="job-pill">Remote-friendly</span>{% endif %}
               {% if active_job.employment_type %}<span class="job-pill">{{ active_job.employment_type }}</span>{% endif %}
             </div>
           {% endif %}
@@ -645,7 +625,6 @@
     const fileNameEl = document.getElementById('fileName');
     const applicantLayout = document.getElementById('applicantLayout');
     const profileForm = document.getElementById('profileForm');
-    const contactInput = document.getElementById('contact');
     const jobIdSelect = document.getElementById('jobId');
     const jobDescriptionCard = document.getElementById('jobDescriptionCard');
     const jobDescriptionTitle = document.getElementById('job-description-title');
@@ -675,12 +654,6 @@
 
       fileNameEl.textContent = file.name;
     });
-
-    if (contactInput) {
-      contactInput.addEventListener('input', function () {
-        contactInput.value = contactInput.value.replace(/\D/g, '').slice(0, 11);
-      });
-    }
 
     function syncJobDescriptionVisibility() {
       if (!jobIdSelect || !jobDescriptionCard) {
@@ -773,9 +746,6 @@
 
       if (jobPills) {
         const pills = [];
-        if (selectedJob.remote_option) {
-          pills.push('<span class="job-pill">Remote-friendly</span>');
-        }
         if (selectedJob.employment_type) {
           pills.push('<span class="job-pill">' + selectedJob.employment_type + '</span>');
         }

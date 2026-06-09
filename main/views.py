@@ -84,6 +84,7 @@ from .services import (
     replace_active_job_description,
     serialize_match_result,
     update_applicant_from_resume_profile,
+    update_job_from_profile,
 )
 
 
@@ -200,8 +201,12 @@ def _build_formatted_text_sections(text: str, default_heading: str | None = None
             sections.append(current_section)
             continue
 
-        is_bullet = bool(re.match(r'^(?:[•\-]\s+|\*\s+)', line))
-        cleaned = re.sub(r'^(?:[•\-]\s+|\*\s+)', '', line).strip()
+        is_dash_bullet = bool(re.match(r'^-\s+', line))
+        is_bullet = bool(re.match(r'^(?:[•]\s+|\*\s+)', line))
+        if is_dash_bullet:
+            cleaned = line.strip()
+        else:
+            cleaned = re.sub(r'^(?:[•]\s+|\*\s+)', '', line).strip()
         if not cleaned:
             continue
 
@@ -226,6 +231,9 @@ def _build_dashboard_preview_sections(text: str, max_chars: int = 250) -> list[d
 
 
 def _get_job_display_text(job: JobDescription) -> str:
+    if job.raw_text:
+        return job.raw_text
+
     description_file = getattr(job, 'description_file', None)
     if not description_file:
         return job.raw_text or ''
@@ -253,7 +261,6 @@ def _build_apply_job_details(available_jobs: list[JobDescription]) -> list[dict[
             'location': job.location,
             'reporting_to': job.reporting_to,
             'employment_type': job.employment_type,
-            'remote_option': job.remote_option,
             'responsibilities': list(job.responsibilities or []),
             'description_preview_text': _about,
             'description_preview_sections': _build_description_preview_sections(_about),
@@ -426,6 +433,64 @@ def dashboard(request):
                 messages.success(request, 'Uploaded job description removed.')
             else:
                 messages.info(request, 'No uploaded job description to remove.')
+            return redirect_to_dashboard('jobs')
+
+        if action == 'update_job_description':
+            job_id = request.POST.get('job_id', '').strip()
+            job = JobDescription.objects.filter(id=job_id).first() if job_id else None
+            if job is None:
+                messages.error(request, 'Job description not found.')
+                return redirect_to_dashboard('jobs')
+
+            title = request.POST.get('title', '').strip()
+            company = request.POST.get('company', '').strip()
+            location = request.POST.get('location', '').strip()
+            employment_type = normalize_employment_type(request.POST.get('employment_type', '').strip()) or ''
+            reporting_to = request.POST.get('reporting_to', '').strip()
+            raw_text = request.POST.get('raw_text', '').strip()
+
+            if not title:
+                messages.error(request, 'Job title is required.')
+                return redirect_to_dashboard('jobs')
+            if not raw_text:
+                messages.error(request, 'Job description is required.')
+                return redirect_to_dashboard('jobs')
+
+            profile_result = _job_description_parser.parse_text(
+                raw_text,
+                filename=os.path.basename(job.description_file.name) if job.description_file else f'{job.title}.txt',
+            )
+            if isinstance(profile_result, list):
+                messages.error(request, 'Edit the job description so it contains only one job posting.')
+                return redirect_to_dashboard('jobs')
+
+            job._history_user = request.user
+            update_job_from_profile(job, profile_result)
+            job.title = title[:200]
+            job.company = company[:200]
+            job.location = location[:200]
+            job.employment_type = employment_type[:100]
+            job.reporting_to = reporting_to[:200]
+            job.save(update_fields=[
+                'title',
+                'company',
+                'location',
+                'employment_type',
+                'reporting_to',
+                'experience_level',
+                'salary_range',
+                'required_skills',
+                'preferred_skills',
+                'responsibilities',
+                'qualifications',
+                'education_requirements',
+                'certifications',
+                'benefits',
+                'industries',
+                'raw_text',
+            ])
+            Applicant.objects.filter(applied_job=job).update(position=job.title)
+            messages.success(request, f'Updated job description: {job.title}.')
             return redirect_to_dashboard('jobs')
 
         if action == 'remove_applicant':
@@ -644,32 +709,8 @@ def apply(request):
         'job_details': job_details,
     }
     if request.method == 'POST':
-        first_name = request.POST.get('first_name', '').strip()
-        last_name = request.POST.get('last_name', '').strip()
-        contact = request.POST.get('contact', request.POST.get('contact_number', '')).strip()
-        email = request.POST.get('email', '').strip()
         resume_file = request.FILES.get('resume')
         selected_job_id = request.POST.get('job_id', '').strip()
-
-        if not first_name or not last_name or not contact or not email:
-            messages.error(request, 'Please fill in all required fields.')
-            return render(request, 'main/applicant.html', context)
-
-        # Enforce model-level max_length at the view layer to avoid a DB error.
-        if len(first_name) > 100 or len(last_name) > 100:
-            messages.error(request, 'Name fields must not exceed 100 characters.')
-            return render(request, 'main/applicant.html', context)
-
-        if not re.fullmatch(r'\d{11}', contact):
-            messages.error(request, 'Contact number must be exactly 11 digits.')
-            return render(request, 'main/applicant.html', context)
-
-        # Validate email format.
-        try:
-            _email_validator(email)
-        except DjangoValidationError:
-            messages.error(request, 'Enter a valid email address.')
-            return render(request, 'main/applicant.html', context)
 
         if not resume_file:
             messages.error(request, 'Please upload a resume file.')
@@ -717,6 +758,44 @@ def apply(request):
             if hasattr(resume_file, 'seek'):
                 resume_file.seek(0)
 
+        full_name = ''
+        if resume_profile is not None:
+            full_name = next(
+                (line.strip() for line in (resume_profile.full_name or '').splitlines() if line.strip()),
+                '',
+            )
+        contact = (resume_profile.phone or '').strip() if resume_profile is not None else ''
+        email = (resume_profile.email or '').strip() if resume_profile is not None else ''
+
+        missing_resume_fields = []
+        if not full_name:
+            missing_resume_fields.append('name')
+        if not contact:
+            missing_resume_fields.append('contact number')
+        if not email:
+            missing_resume_fields.append('email')
+        if parse_error or missing_resume_fields:
+            missing_label = ', '.join(missing_resume_fields)
+            if parse_error:
+                messages.error(request, f'We could not extract your name, contact number, and email from the uploaded resume: {parse_error}')
+            else:
+                messages.error(request, f'We could not extract the following from the uploaded resume: {missing_label}.')
+            return render(request, 'main/applicant.html', context)
+
+        name_parts = full_name.split(None, 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+        if len(first_name) > 100 or len(last_name) > 100:
+            first_name = first_name[:100]
+            last_name = last_name[:100]
+
+        if email:
+            try:
+                _email_validator(email)
+            except DjangoValidationError:
+                email = ''
+
         applicant = Applicant.objects.create(
             first_name=first_name,
             last_name=last_name,
@@ -754,10 +833,7 @@ def apply(request):
                     'match_notes',
                 ])
 
-        if parse_error:
-            messages.warning(request, f'Application submitted, but resume analysis was limited: {parse_error}')
-        else:
-            messages.success(request, 'Application submitted successfully.')
+        messages.success(request, 'Application submitted successfully.')
         return redirect('apply')
 
     return render(request, 'main/applicant.html', context)

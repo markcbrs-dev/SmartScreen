@@ -41,6 +41,7 @@ import importlib
 import logging
 import os
 import re
+import tempfile
 from typing import IO, Optional
 
 from .entities import ResumeProfile
@@ -74,6 +75,11 @@ try:
 except ImportError:
     spacy = None
 
+try:
+    from resume_parser_pro import ResumeParser as ResumeParserPro
+except ImportError:
+    ResumeParserPro = None
+
 
 ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
@@ -87,13 +93,20 @@ class ResumeParser:
 
     def parse(self, file_obj, filename: Optional[str] = None) -> ResumeProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
+        pro_data = self._parse_with_resume_parser_pro(file_obj, filename=filename)
         profile = ResumeProfile(raw_text=raw_text)
-        profile.email = self.extract_email(raw_text)
-        profile.phone = self.extract_phone(raw_text)
+        profile.email = self.extract_email(raw_text) or self._first_resume_parser_pro_value(pro_data.get('email'))
+        profile.phone = self.extract_phone(raw_text) or self._normalize_phone_number(
+            self._first_resume_parser_pro_value(pro_data.get('phone_number'))
+        )
         profile.skills = self.extract_skills(raw_text)
         profile.education = normalize_education_entries(self.extract_education(raw_text))
         profile.experience = normalize_list_text(self.extract_experience(raw_text))
-        profile.organizations, profile.locations, profile.full_name = self.extract_entities(raw_text)
+        profile.organizations, profile.locations, fallback_name = self.extract_entities(raw_text)
+        profile.full_name = self._select_best_full_name(
+            self._first_resume_parser_pro_value(pro_data.get('name')),
+            fallback_name,
+        )
         return profile
 
     def extract_text(self, file_obj, filename: Optional[str] = None) -> str:
@@ -161,6 +174,121 @@ class ResumeParser:
                         lines.append(cell.text.strip())
         return '\n'.join(lines)
 
+    def _parse_with_resume_parser_pro(self, file_obj, filename: Optional[str] = None) -> dict[str, object]:
+        if ResumeParserPro is None:
+            return {}
+
+        ext = self._get_extension(file_obj, filename)
+        if ext not in {'.pdf', '.docx'}:
+            return {}
+
+        temp_path = None
+        try:
+            temp_path = self._write_temp_resume_file(file_obj, ext)
+            if not temp_path:
+                return {}
+
+            parser = ResumeParserPro(temp_path)
+            parsed = parser.parse()
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            logger.exception('resume-parser-pro failed to parse resume. Falling back to built-in heuristics.')
+            return {}
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    logger.debug('Could not remove temporary resume-parser-pro file: %s', temp_path)
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+
+    def _write_temp_resume_file(self, file_obj, extension: str) -> Optional[str]:
+        if not hasattr(file_obj, 'read'):
+            return None
+
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+
+        data = file_obj.read()
+        if not data:
+            return None
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=extension)
+        try:
+            temp_file.write(data)
+            return temp_file.name
+        finally:
+            temp_file.close()
+
+    def _first_resume_parser_pro_value(self, value: object) -> Optional[str]:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    return item.strip()
+
+        return None
+
+    def _normalize_full_name(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+
+        normalized = self._normalize_name_candidate(value)
+        if not normalized:
+            return None
+
+        words = []
+        for part in normalized.split():
+            if not part:
+                continue
+            stripped = re.sub(r"[^A-Za-z]", '', part)
+            if stripped and len(stripped) <= 3 and stripped.upper() in {'II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'JR', 'SR'}:
+                words.append(stripped.upper())
+                continue
+            words.append(part.title())
+
+        formatted = ' '.join(words).strip()
+        return formatted or None
+
+    def _select_best_full_name(self, primary_value: Optional[str], fallback_value: Optional[str]) -> Optional[str]:
+        primary_name = self._normalize_full_name(primary_value)
+        fallback_name = self._normalize_full_name(fallback_value)
+
+        if not primary_name:
+            return fallback_name
+        if not fallback_name:
+            return primary_name
+
+        primary_parts = self._count_name_parts(primary_name)
+        fallback_parts = self._count_name_parts(fallback_name)
+
+        if primary_parts < 2 <= fallback_parts:
+            return fallback_name
+        if fallback_parts > primary_parts and self._is_name_extension(primary_name, fallback_name):
+            return fallback_name
+        return primary_name
+
+    def _count_name_parts(self, value: str) -> int:
+        return len([part for part in value.split() if re.search(r'[A-Za-z]', part)])
+
+    def _is_name_extension(self, shorter_name: str, longer_name: str) -> bool:
+        shorter_parts = [part for part in shorter_name.lower().split() if part]
+        longer_parts = [part for part in longer_name.lower().split() if part]
+        if not shorter_parts or len(longer_parts) <= len(shorter_parts):
+            return False
+
+        shorter_index = 0
+        for part in longer_parts:
+            if shorter_index < len(shorter_parts) and part == shorter_parts[shorter_index]:
+                shorter_index += 1
+        return shorter_index == len(shorter_parts)
+
     def extract_email(self, text: str) -> Optional[str]:
         matches = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', text, re.IGNORECASE)
         return matches[0] if matches else None
@@ -177,11 +305,39 @@ class ResumeParser:
             for match in matches:
                 digits = re.sub(r'\D', '', match)  # Strip non-digits to count actual digit length
                 if len(digits) >= 10:              # Require at least 10 digits to avoid false positives
-                    return match.strip()
+                    normalized = self._normalize_phone_number(match)
+                    return normalized or match.strip()
         return None
 
+    def _normalize_phone_number(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+
+        digits = re.sub(r'\D', '', value)
+        local_number = None
+
+        if len(digits) == 11 and digits.startswith('09'):
+            local_number = digits[1:]
+        elif len(digits) == 12 and digits.startswith('639'):
+            local_number = digits[2:]
+        elif len(digits) == 10 and digits.startswith('9'):
+            local_number = digits
+
+        if not local_number or len(local_number) != 10:
+            return value.strip() if isinstance(value, str) else None
+
+        return f'+63 {local_number[:3]} {local_number[3:6]} {local_number[6:]}'
+
     def extract_skills(self, text: str) -> list[str]:
-        return extract_canonical_skills(text)
+        skills_section_text = self._extract_first_section_text(
+            text,
+            ['skills', 'technical skills', 'core competencies', 'competencies', 'expertise', 'tech stack'],
+            ['experience', 'work experience', 'employment history', 'professional experience', 'education', 'projects', 'certifications', 'references'],
+        )
+        if skills_section_text:
+            return extract_canonical_skills(skills_section_text)
+
+        return self._filter_ambiguous_full_text_skills(text, extract_canonical_skills(text))
 
     def extract_education(self, text: str) -> list[str]:
         # Add or remove keywords here to control which lines are captured as education entries
@@ -268,21 +424,78 @@ class ResumeParser:
         return self._nlp
 
     def _guess_name(self, text: str) -> Optional[str]:
-        # Scans the first 8 lines of the resume for a plausible full name.
+        # Scans the first 12 lines of the resume for a plausible full name.
         # A candidate line must: have 2-4 words, start with a capital letter, contain no '@'.
-        # Increase the [:8] range if applicant names are usually further down in the file.
-        excluded_tokens = {'resume', 'curriculum vitae', 'cv', 'experience', 'education', 'skills', 'profile', 'summary'}
-        for line in text.splitlines()[:8]:
-            candidate = ' '.join(line.split()).strip()
-            normalized_candidate = candidate.lower().rstrip(':')
-            if not candidate or '@' in candidate or len(candidate) > 60 or any(char.isdigit() for char in candidate):
-                continue
-            if normalized_candidate in excluded_tokens:
-                continue
-            words = candidate.split()
-            if 1 < len(words) < 5 and all(word[:1].isupper() for word in words if word.isalpha()):
+        # Increase the [:12] range if applicant names are usually further down in the file.
+        raw_lines = [line for line in text.splitlines()[:12] if line.strip()]
+        candidates = []
+        for index, line in enumerate(raw_lines):
+            candidates.append(line)
+            if index + 1 < len(raw_lines):
+                candidates.append(f'{line} {raw_lines[index + 1]}')
+
+        for candidate_text in candidates:
+            candidate = self._normalize_name_candidate(candidate_text)
+            if self._is_plausible_name_candidate(candidate):
                 return candidate
         return None
+
+    def _normalize_name_candidate(self, line: str) -> str:
+        candidate = ' '.join(line.split()).strip()
+        candidate = re.sub(r'^(?:full\s+name|name)\s*:\s*', '', candidate, flags=re.IGNORECASE)
+        if ',' in candidate:
+            parts = [part.strip() for part in candidate.split(',') if part.strip()]
+            if len(parts) == 2:
+                candidate = f'{parts[1]} {parts[0]}'
+        return candidate.strip(' -:\t')
+
+    def _is_plausible_name_candidate(self, candidate: str) -> bool:
+        excluded_tokens = {'resume', 'curriculum vitae', 'cv', 'experience', 'education', 'skills', 'profile', 'summary'}
+        excluded_keywords = {
+            'developer', 'engineer', 'manager', 'analyst', 'specialist', 'associate',
+            'professor', 'instructor', 'teacher', 'student', 'intern', 'internship',
+            'objective', 'career objective', 'professional summary', 'contact', 'phone',
+            'email', 'address', 'portfolio', 'linkedin', 'github',
+        }
+        normalized_candidate = candidate.lower().rstrip(':')
+        if not candidate or '@' in candidate or len(candidate) > 80 or any(char.isdigit() for char in candidate):
+            return False
+        if normalized_candidate in excluded_tokens:
+            return False
+        if any(keyword in normalized_candidate for keyword in excluded_keywords):
+            return False
+
+        words = candidate.split()
+        if not (1 < len(words) < 6):
+            return False
+        return all(word[:1].isupper() for word in words if any(char.isalpha() for char in word))
+
+    def _filter_ambiguous_full_text_skills(self, text: str, skills: list[str]) -> list[str]:
+        filtered = []
+        for skill in skills:
+            if skill == 'Information Technology':
+                if not re.search(r'\binformation technology\b', text, re.IGNORECASE):
+                    continue
+            elif skill == 'Computer Science':
+                if not re.search(r'\bcomputer science\b', text, re.IGNORECASE):
+                    continue
+            elif skill == 'Go':
+                if not re.search(r'\bgolang\b|\bgo language\b', text, re.IGNORECASE):
+                    continue
+            elif skill == 'AI':
+                if not re.search(r'\bartificial intelligence\b', text, re.IGNORECASE) and not re.search(r'(?<![A-Za-z0-9])AI(?![A-Za-z0-9])', text):
+                    continue
+            elif skill == 'Machine Learning':
+                if not re.search(r'\bmachine learning\b', text, re.IGNORECASE) and not re.search(r'(?<![A-Za-z0-9])ML(?![A-Za-z0-9])', text):
+                    continue
+            elif skill == 'JavaScript':
+                if not re.search(r'\bjavascript\b', text, re.IGNORECASE) and not re.search(r'(?<![A-Za-z0-9])JS(?![A-Za-z0-9])', text):
+                    continue
+            elif skill == 'TypeScript':
+                if not re.search(r'\btypescript\b', text, re.IGNORECASE) and not re.search(r'(?<![A-Za-z0-9])TS(?![A-Za-z0-9])', text):
+                    continue
+            filtered.append(skill)
+        return filtered
 
     def _extract_first_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
         lines = text.splitlines()

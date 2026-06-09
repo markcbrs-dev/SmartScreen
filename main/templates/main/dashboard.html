@@ -516,7 +516,6 @@
                 <h3 class="db-job-detail-name">{{ job.title }}</h3>
                 <div class="db-job-detail-pills">
                   {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
-                  {% if not job.employment_type and job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
                 </div>
               </div>
             </div>
@@ -549,12 +548,17 @@
                 <div class="db-job-preview-text db-job-description-groups">
                   {% for section in job.description_preview_excerpt_sections %}
                     <div class="db-job-description-group">
+                      {% if section.heading_html %}
+                        <p class="db-job-description-heading">{{ section.heading_html|safe }}</p>
+                      {% endif %}
                       {% if section.blocks %}
                         {% for block in section.blocks %}
                           {% if block.type == 'list' %}
-                            {% for item in block.items_html %}
-                              <p class="db-job-description-copy">{{ item|safe }}</p>
-                            {% endfor %}
+                            <ul class="db-job-detail-list">
+                              {% for item in block.items_html %}
+                                <li>{{ item|safe }}</li>
+                              {% endfor %}
+                            </ul>
                           {% else %}
                             <p class="db-job-description-copy">{{ block.html|safe }}</p>
                           {% endif %}
@@ -580,6 +584,15 @@
                 <i class="bi bi-eye-fill"></i>
               </button>
               {% endif %}
+              <button
+                type="button"
+                class="db-card-action-icon db-card-action-icon-view js-open-job-dialog"
+                data-dialog-id="jobEditDialog-{{ job.id }}"
+                aria-label="Edit uploaded job description"
+                title="Edit uploaded job description"
+              >
+                <i class="bi bi-pencil-square"></i>
+              </button>
               <form method="post" class="db-inline-form">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="remove_job_description">
@@ -595,6 +608,60 @@
               </form>
             </div>
           </div>
+            <dialog class="db-dialog" id="jobEditDialog-{{ job.id }}">
+              <div class="db-dialog-shell">
+                <div class="db-dialog-header">
+                  <div>
+                    <h3 class="db-dialog-title">Edit {{ job.title }}</h3>
+                    <p class="db-dialog-subtitle">Update the saved job details shown across the dashboard.</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="db-dialog-close js-close-job-dialog"
+                    data-dialog-id="jobEditDialog-{{ job.id }}"
+                    aria-label="Close job edit form"
+                  >
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+                <div class="db-dialog-content">
+                  <form method="post" class="db-upload-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_job_description">
+                    <input type="hidden" name="job_id" value="{{ job.id }}">
+                    <div class="db-form-grid">
+                      <label class="db-field-label" for="jobTitle-{{ job.id }}">Job Title</label>
+                      <input id="jobTitle-{{ job.id }}" type="text" name="title" class="db-form-input" value="{{ job.title }}" maxlength="200" required>
+
+                      <label class="db-field-label" for="jobCompany-{{ job.id }}">Company</label>
+                      <input id="jobCompany-{{ job.id }}" type="text" name="company" class="db-form-input" value="{{ job.company }}" maxlength="200">
+
+                      <label class="db-field-label" for="jobLocation-{{ job.id }}">Location</label>
+                      <input id="jobLocation-{{ job.id }}" type="text" name="location" class="db-form-input" value="{{ job.location }}" maxlength="200">
+
+                      <label class="db-field-label" for="jobEmploymentType-{{ job.id }}">Employment Type</label>
+                      <input id="jobEmploymentType-{{ job.id }}" type="text" name="employment_type" class="db-form-input" value="{{ job.employment_type }}" maxlength="100">
+
+                      <label class="db-field-label" for="jobReportingTo-{{ job.id }}">Reporting To</label>
+                      <input id="jobReportingTo-{{ job.id }}" type="text" name="reporting_to" class="db-form-input" value="{{ job.reporting_to }}" maxlength="200">
+
+                      <label class="db-field-label" for="jobRawText-{{ job.id }}">Job Description</label>
+                      <textarea id="jobRawText-{{ job.id }}" name="raw_text" class="db-form-input" rows="10" required>{{ job.raw_text }}</textarea>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                      <button
+                        type="button"
+                        class="db-btn-remove"
+                        onclick="document.getElementById('jobEditDialog-{{ job.id }}').close()"
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" class="db-btn-resume">Save Changes</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </dialog>
             {% if job.raw_text %}
             <dialog class="db-dialog" id="jobDescriptionDialog-{{ job.id }}">
               <div class="db-dialog-shell">
@@ -618,7 +685,6 @@
                       <h4 class="db-job-detail-name">{{ job.title }}</h4>
                     </div>
                     <div class="db-job-detail-pills">
-                      {% if job.remote_option %}<span class="db-job-detail-pill">Remote-friendly</span>{% endif %}
                       {% if job.employment_type %}<span class="db-job-detail-pill">{{ job.employment_type }}</span>{% endif %}
                     </div>
                   </div>
@@ -654,9 +720,11 @@
                           {% if section.blocks %}
                             {% for block in section.blocks %}
                               {% if block.type == 'list' %}
-                                {% for item in block.items_html %}
-                                  <p class="db-job-description-copy">{{ item|safe }}</p>
-                                {% endfor %}
+                                <ul class="db-job-detail-list">
+                                  {% for item in block.items_html %}
+                                    <li>{{ item|safe }}</li>
+                                  {% endfor %}
+                                </ul>
                               {% else %}
                                 <p class="db-job-description-copy">{{ block.html|safe }}</p>
                               {% endif %}
