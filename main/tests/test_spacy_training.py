@@ -284,7 +284,7 @@ class SpacyTrainingTests(SimpleTestCase):
 
 
 class MatcherClassifierHookTests(SimpleTestCase):
-    def test_matcher_adds_title_prediction_score_when_classifier_available(self):
+    def test_matcher_ignores_title_prediction_for_final_breakdown(self):
         resume = ResumeProfile(
             raw_text='Python TensorFlow PyTorch machine learning',
             skills=['Python', 'TensorFlow'],
@@ -306,8 +306,7 @@ class MatcherClassifierHookTests(SimpleTestCase):
         with patch('main.services.matcher.get_job_title_classifier', return_value=StubClassifier()):
             result = ResumeJobMatcher().match_resume_to_job(resume, job)
 
-        self.assertIn('title_prediction_score', result.breakdown)
-        self.assertAlmostEqual(result.breakdown['title_prediction_score'], 0.8)
+        self.assertNotIn('title_prediction_score', result.breakdown)
 
     def test_matcher_ignores_low_confidence_title_prediction_scores(self):
         resume = ResumeProfile(
@@ -331,7 +330,7 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertNotIn('title_prediction_score', result.breakdown)
 
-    def test_matcher_uses_structured_entities_for_keyword_similarity_when_raw_text_is_sparse(self):
+    def test_matcher_does_not_use_keyword_similarity_in_final_score(self):
         resume = ResumeProfile(
             raw_text='miscellaneous text',
             skills=['Python', 'TensorFlow'],
@@ -349,7 +348,8 @@ class MatcherClassifierHookTests(SimpleTestCase):
         with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
             result = ResumeJobMatcher().match_resume_to_job(resume, job)
 
-        self.assertGreater(result.keyword_match_score, 0.0)
+        self.assertEqual(result.keyword_match_score, 0.0)
+        self.assertNotIn('keyword_score', result.breakdown)
         self.assertIn('Python', result.matching_skills)
 
     def test_matcher_caps_overall_score_when_resume_lacks_most_required_skills(self):

@@ -1,0 +1,57 @@
+JOSE
+LORENZO
+FAELMAN
+W eb D eveloper
+• JavaScript(ES6)
+• PHP 8
+• Node.js
+• Python 3 
+• Django Framework
+• Flask
+• Azure Cloud Services 
+• Azure DevOps
+• Angular 8
+• CSS Frameworks(Bootstrap, Materialize,
+TailWind)
+• AI & ML (TensorFlow)
+• Relational Database(MySQL, PostgreSQL)
+• NoSQL Database(MongoDB)
+PROFESSIONAL SKILLS:
+#30 Cattleya St. Cainta Greenpark Village
+Cainta, Rizal
+Cell: 09215504226
+Email: jlfaelman@gmail.comCONTACT DETAILS:A SSISTA N T TO  SEN IO R  PR O JECT M A N A G ER
+Solaire Resorts & Casino Manila
+Internship (300 hours) | September 2018 - October 2018
+• Created project requirement list for Project Managers using Excel VBA
+• Helped testing applications in development.EMPLOYMENT HISTORY:
+• Critical Thinking
+• Problem-solving
+• Teamwork Skills
+• Proficiency in prototyping softwaresCORE SKILLS:
+POLYTECHNIC UNIVERSITY OF THE PHILIPPINES
+Institute of Technology
+Class of 2021
+Diploma in Information Communication Technology
+ACADEMIC BACKGROUND:
+ROOSEVELT COLLEGE INC. - CAINTA 
+From 2016 to 2018
+Senior High
+Humanities and Social Science StrandCERTIFICATES:
+EXCEL TECHNICAL SKILLS AND CAREER CENTER, INC.
+Creative Web Design - Level 3
+SEAGEM TRAINING AND ASSESSMENT CENTER, INC.
+Web Development -  Level 2
+CO N SU LTA N T - LEA D  SO FTW A R E D EV ELO PER
+Irvine Analytics Solutions | January 2021 - Present
+• Develop their system using CodeIgniter3 / PHP. 
+• Develop web application with Python and Django Framework.
+• Created multiple APIs using NodeJs & Express Framework for handling
+data from Azure Services to Web App
+• Created API with Flask and deployed MQTT Communication between
+sensors using Azure IoTHub and web application. 
+• Created and deployed Virtual Machines for Clients using Azure Cloud
+Services.
+• Developed and trained an analytical model using TensorFlow.
+• Integrate OpenAI API for chatbot, summarization of reports, and
+recommendations for clients.

@@ -474,10 +474,17 @@ class JobDescriptionParser:
         required = extract_canonical_skills(required_section_text) if required_section_text else []
         preferred = extract_canonical_skills(preferred_section_text) if preferred_section_text else []
 
+        if required_section_text:
+            required = self._filter_education_domain_skills(required_section_text, required)
+        if preferred_section_text:
+            preferred = self._filter_education_domain_skills(preferred_section_text, preferred)
+
         if not required and not preferred:
             all_skills = extract_canonical_skills(text)
             for skill in all_skills:
                 occurrences = [match.start() for match in re.finditer(re.escape(skill.lower()), text_lower)]
+                if self._should_skip_education_domain_skill(text, skill, occurrences):
+                    continue
                 if any(self._is_preferred_context(text_lower, index, len(skill)) for index in occurrences):
                     preferred.append(skill)
                 else:
@@ -702,6 +709,34 @@ class JobDescriptionParser:
         window_end = min(len(text), start + length + 50)
         context = text[window_start:window_end]
         return any(marker in context for marker in ['preferred', 'nice to have', 'bonus', 'plus', 'desired'])
+
+    def _filter_education_domain_skills(self, text: str, skills: list[str]) -> list[str]:
+        filtered = []
+        for skill in skills:
+            occurrences = [match.start() for match in re.finditer(re.escape(skill.lower()), text.lower())]
+            if self._should_skip_education_domain_skill(text, skill, occurrences):
+                continue
+            filtered.append(skill)
+        return filtered
+
+    def _should_skip_education_domain_skill(self, text: str, skill: str, occurrences: list[int]) -> bool:
+        if skill not in {'Information Technology', 'Computer Science'}:
+            return False
+        if not occurrences:
+            return False
+        return all(self._is_education_context(text, index, len(skill)) for index in occurrences)
+
+    def _is_education_context(self, text: str, start: int, length: int) -> bool:
+        window_start = max(0, start - 80)
+        window_end = min(len(text), start + length + 80)
+        context = text[window_start:window_end].lower()
+        education_markers = (
+            'bachelor', 'master', 'phd', 'doctorate', 'degree', 'graduate',
+            'bsit', 'bscs', 'bs cs', 'bs it', 'it/cs', 'cs/it', 'it-related',
+            'educational', 'qualification', 'qualifications', 'minimum qualifications',
+            'college', 'university',
+        )
+        return any(marker in context for marker in education_markers)
 
     def _load_tech_skills(self) -> set[str]:
         return set(get_canonical_skills('hard'))

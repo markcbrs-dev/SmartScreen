@@ -1,34 +1,22 @@
 """
-main/services/matcher.py — Multi-factor resume-to-job scoring engine.
+main/services/matcher.py — Resume-to-job scoring engine.
 
 OVERVIEW
 --------
 ResumeJobMatcher.match_resume_to_job() is the core algorithm.
 It produces a JobMatchResult with an overall_score (0.0–1.0) and a breakdown.
 
-SCORING WEIGHTS (when spaCy textcat is NOT available)
-------------------------------------------------------
-  Skill match       40%  — keyword/semantic overlap of resume skills vs. JD skills
-  Experience match  20%  — estimated experience level vs. JD requirement
-  Education match   15%  — estimated education level vs. JD requirement
-  Keyword similarity15%  — TF-IDF cosine (sklearn) or semantic (sentence-transformers)
-  Location match     5%  — resume location vs. JD location
-  Remote match       5%  — remote preference detection
+SCORING WEIGHTS
+---------------
+    Skill match       50%  — keyword/semantic overlap of resume skills vs. JD skills
+    Experience match  30%  — estimated experience level vs. JD requirement
+    Education match   20%  — estimated education level vs. JD requirement
 
-SCORING WEIGHTS (when spaCy textcat IS available, adds title prediction score)
--------------------------------------------------------------------------------
-  Skill match       35%
-  Experience match  18%
-  Education match   12%
-  Keyword similarity10%
-  Title prediction  15%  ← spaCy textcat model (models/spacy_job_classifier/)
-  Location match     5%
-  Remote match       5%
+Only these three factors contribute to the final match score.
 
 HOW TO MODIFY
 -------------
-  Adjust weights          → edit the `overall_score = (...)` expressions in
-                              match_resume_to_job() (both the with/without textcat branches)
+    Adjust weights          → edit the component list in match_resume_to_job()
   Change skill vocabulary → edit _SKILL_VOCAB (used as fallback when JD has no skills)
                               Keep in sync with _load_common_skills() in resume_parser.py
   Change semantic threshold → edit `threshold = 0.72` in calculate_skill_match()
@@ -36,13 +24,12 @@ HOW TO MODIFY
   Change education mapping  → edit self.education_mapping in __init__()
   Change skill floor        → edit the `if skill_score == 0.0` block at the end of
                               match_resume_to_job()
-  Add a new scoring factor  → compute it, add to breakdown dict, add its weight to
-                              the overall_score sum, and add a field to JobMatchResult
-                              in entities.py
+    Add a new scoring factor  → compute it, add it to the components list, and add a
+                                                            field to JobMatchResult in entities.py
 
 DEBUG
 -----
-  Wrong overall score? → check breakdown dict in the returned JobMatchResult
+    Wrong overall score? → check the 3-item breakdown dict in the returned JobMatchResult
   Skills not matching? → check _SKILL_VOCAB and _load_common_skills() in resume_parser.py
   NaN / 0 scores?      → check that resume_text / raw_text fields are not empty
 """
@@ -135,14 +122,11 @@ class ResumeJobMatcher:
             effective_required = self._extract_vocab_skills(job.raw_text or '')
 
         normalized_resume_skills = canonicalize_skill_list(resume.skills or [])
-        normalized_job_location = normalize_location_text(job.location)
         normalized_experience_level = normalize_experience_level(job.experience_level)
         job_profile_type = self._classify_job_profile(job, effective_required, effective_preferred)
         skill_known = bool(effective_required or effective_preferred)
         experience_known = bool(normalized_experience_level)
         education_known = bool(job.education_requirements)
-        location_known = self._job_has_location_requirement(normalized_job_location)
-        remote_known = self._job_has_work_mode_requirement(job.raw_text or '')
 
         skill_score, matching_skills, missing_skills = self.calculate_skill_match(
             normalized_resume_skills,
@@ -152,76 +136,14 @@ class ResumeJobMatcher:
         )
         experience_score = self.calculate_experience_match(resume.experience, normalized_experience_level)
         education_score = self.calculate_education_match(resume.education, job.education_requirements)
-        # Build a compact text of just the structured entities for keyword similarity.
-        # Focusing on entities (skills, experience, education) instead of raw paragraphs
-        # gives a cleaner signal; raw text is used as fallback when entities are empty.
-        resume_entity_text = self._build_entity_text(normalized_resume_skills, resume.experience, resume.education)
-        job_entity_text = self._build_entity_text(
-            effective_required + effective_preferred,
-            list(job.responsibilities or []) + list(job.qualifications or []),
-            job.education_requirements,
-        )
-        entity_keyword_score = self.calculate_keyword_similarity(
-            resume_entity_text or resume.raw_text,
-            job_entity_text or job.raw_text,
-        )
-        if resume_entity_text and job_entity_text and resume.raw_text.strip() and job.raw_text.strip():
-            raw_keyword_score = self.calculate_keyword_similarity(resume.raw_text, job.raw_text)
-            keyword_score = (entity_keyword_score * 0.8) + (raw_keyword_score * 0.2)
-        else:
-            keyword_score = entity_keyword_score
-        location_match = self.check_location_match(resume.locations, normalized_job_location) if location_known else False
-        remote_match = self.check_remote_match(resume.raw_text, job.raw_text or '') if remote_known else False
-        title_prediction_score = self.calculate_job_title_prediction_score(resume.raw_text, job.title)
 
-        breakdown = {
-            'job_profile_type': 1.0 if job_profile_type == 'non_tech' else 0.0,
-            'skill_score': skill_score,
-            'experience_score': experience_score,
-            'education_score': education_score,
-            'keyword_score': keyword_score,
-        }
-        if job_profile_type == 'non_tech':
-            if title_prediction_score is None:
-                components = [
-                    ('skill_score', skill_score if skill_known else None, 0.30),
-                    ('experience_score', experience_score if experience_known else None, 0.25),
-                    ('education_score', education_score if education_known else None, 0.10),
-                    ('keyword_score', keyword_score, 0.20),
-                    ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.10),
-                    ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
-                ]
-            else:
-                components = [
-                    ('skill_score', skill_score if skill_known else None, 0.25),
-                    ('experience_score', experience_score if experience_known else None, 0.22),
-                    ('education_score', education_score if education_known else None, 0.08),
-                    ('keyword_score', keyword_score, 0.15),
-                    ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.10),
-                    ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
-                    ('title_prediction_score', title_prediction_score, 0.15),
-                ]
-        elif title_prediction_score is None:
-            components = [
-                ('skill_score', skill_score if skill_known else None, 0.4),
-                ('experience_score', experience_score if experience_known else None, 0.2),
-                ('education_score', education_score if education_known else None, 0.15),
-                ('keyword_score', keyword_score, 0.15),
-                ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.05),
-                ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
-            ]
-        else:
-            components = [
-                ('skill_score', skill_score if skill_known else None, 0.35),
-                ('experience_score', experience_score if experience_known else None, 0.18),
-                ('education_score', education_score if education_known else None, 0.12),
-                ('keyword_score', keyword_score, 0.10),
-                ('location_score', 1.0 if location_match else 0.0 if location_known else None, 0.05),
-                ('remote_score', 1.0 if remote_match else 0.0 if remote_known else None, 0.05),
-                ('title_prediction_score', title_prediction_score, 0.15),
-            ]
+        components = [
+            ('skill_score', skill_score if skill_known else None, 0.50),
+            ('experience_score', experience_score if experience_known else None, 0.30),
+            ('education_score', education_score if education_known else None, 0.20),
+        ]
 
-        overall_score = self._calculate_weighted_score(components, breakdown)
+        overall_score = self._calculate_weighted_score(components)
 
         # Graduated skill ceiling: prevents experience, education, and keyword
         # components from padding a score when the candidate matches only a
@@ -234,20 +156,22 @@ class ResumeJobMatcher:
         #   skill_score = 0.40 → ceiling = 0.35
         #   skill_score ≥ 0.50 → no ceiling applied (half or more skills matched)
         #
-        # This keeps one- or two-skill matches from landing in the mid-30s or
-        # higher just because experience, education, or keyword similarity are strong.
+        # This keeps one- or two-skill matches from landing too high just because
+        # experience and education happen to align well.
         if skill_known and skill_score < 0.5 and (effective_required or effective_preferred):
             skill_ceiling = max(0.20, skill_score * 0.5 + 0.15)
             overall_score = min(overall_score, skill_ceiling)
+
+        breakdown = self._calculate_contribution_breakdown(components, overall_score)
 
         return JobMatchResult(
             overall_score=max(0.0, min(1.0, overall_score)),
             skill_match_score=skill_score,
             experience_match_score=experience_score,
             education_match_score=education_score,
-            keyword_match_score=keyword_score,
-            location_match=location_match,
-            remote_match=remote_match,
+            keyword_match_score=0.0,
+            location_match=False,
+            remote_match=False,
             matching_skills=matching_skills,
             missing_skills=missing_skills,
             breakdown=breakdown,
@@ -277,19 +201,48 @@ class ResumeJobMatcher:
     def _calculate_weighted_score(
         self,
         components: list[tuple[str, Optional[float], float]],
-        breakdown: dict[str, float],
     ) -> float:
         weighted_sum = 0.0
         active_weight = 0.0
-        for name, score, weight in components:
+        for _, score, weight in components:
             if score is None:
                 continue
-            breakdown[name] = score
             weighted_sum += score * weight
             active_weight += weight
         if active_weight == 0:
             return 0.0
         return weighted_sum / active_weight
+
+    def _calculate_contribution_breakdown(
+        self,
+        components: list[tuple[str, Optional[float], float]],
+        final_overall_score: float,
+    ) -> dict[str, float]:
+        weighted_sum = 0.0
+        active_weight = 0.0
+        for _, score, weight in components:
+            if score is None:
+                continue
+            weighted_sum += score * weight
+            active_weight += weight
+
+        if active_weight == 0:
+            return {}
+
+        uncapped_overall = weighted_sum / active_weight
+        if uncapped_overall <= 0:
+            return {
+                name: 0.0
+                for name, score, _ in components
+                if score is not None
+            }
+
+        scale = max(0.0, min(1.0, final_overall_score / uncapped_overall))
+        return {
+            name: ((score * weight) / active_weight) * scale
+            for name, score, weight in components
+            if score is not None
+        }
 
     def _job_has_location_requirement(self, job_location: Optional[str]) -> bool:
         if not job_location:

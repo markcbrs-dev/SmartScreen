@@ -47,6 +47,7 @@ FUNCTIONS IN THIS FILE
 """
 
 import os
+import re
 from functools import lru_cache
 
 from django.core.files.base import ContentFile, File
@@ -104,19 +105,70 @@ def extract_about_job_onward_text(raw_text: str) -> str:
     return get_job_parser().extract_about_job_onward_text(raw_text or '')
 
 
+def _job_has_stale_education_domain_skills(job: JobDescription) -> bool:
+    stale_skills = {'Information Technology', 'Computer Science'}
+    combined_skills = set(job.required_skills or []) | set(job.preferred_skills or [])
+    if not combined_skills.intersection(stale_skills):
+        return False
+
+    raw_text = (job.raw_text or '').lower()
+    if not raw_text:
+        return False
+
+    return any(marker in raw_text for marker in (
+        'bsit', 'bscs', 'it/cs', 'cs/it', 'information technology', 'computer science',
+        'bachelor', 'master', 'degree', 'graduate',
+    ))
+
+
+def _refresh_stale_job_profile(job: JobDescription) -> JobDescription:
+    if not _job_has_stale_education_domain_skills(job):
+        return job
+
+    profile = get_job_parser().parse_text(job.raw_text or '', filename=f'{job.title}.txt')
+    if isinstance(profile, list):
+        return job
+
+    job.experience_level = profile.experience_level or ''
+    job.salary_range = profile.salary_range or ''
+    job.required_skills = profile.required_skills
+    job.preferred_skills = profile.preferred_skills
+    job.responsibilities = profile.responsibilities
+    job.qualifications = profile.qualifications
+    job.education_requirements = profile.education_requirements
+    job.certifications = profile.certifications
+    job.benefits = profile.benefits
+    job.industries = profile.industries
+    job.save(update_fields=[
+        'experience_level',
+        'salary_range',
+        'required_skills',
+        'preferred_skills',
+        'responsibilities',
+        'qualifications',
+        'education_requirements',
+        'certifications',
+        'benefits',
+        'industries',
+    ])
+    return job
+
+
 # -----------------------------------------------------------------------
 # JOB DESCRIPTION CRUD
 # replace_active_job_description() is called by the dashboard view on upload.
 # remove_active_job_description() is called by the dashboard view on remove.
 # -----------------------------------------------------------------------
 def get_active_job_description() -> JobDescription | None:
-    return JobDescription.objects.order_by('-created_at', '-id').first()
+    job = JobDescription.objects.order_by('-created_at', '-id').first()
+    return _refresh_stale_job_profile(job) if job is not None else None
 
 
 def get_job_description_by_id(job_id) -> JobDescription | None:
     if not job_id:
         return None
-    return JobDescription.objects.filter(id=job_id).first()
+    job = JobDescription.objects.filter(id=job_id).first()
+    return _refresh_stale_job_profile(job) if job is not None else None
 
 
 def _delete_job_description(job: JobDescription) -> None:
@@ -162,7 +214,8 @@ def remove_active_job_description(job_id=None) -> bool:
 
 
 def get_active_job_descriptions() -> list[JobDescription]:
-    return list(JobDescription.objects.order_by('-created_at', '-id'))
+    jobs = list(JobDescription.objects.order_by('-created_at', '-id'))
+    return [_refresh_stale_job_profile(job) for job in jobs]
 
 
 # -----------------------------------------------------------------------
@@ -222,6 +275,28 @@ def build_resume_profile_from_applicant(applicant) -> ResumeProfile:
 # DEBUG: if scores look wrong, set a breakpoint here or in matcher.py.
 # -----------------------------------------------------------------------
 def refresh_applicant_match(applicant, active_job: JobDescription | None):
+    def has_current_breakdown(match_notes) -> bool:
+        if not isinstance(match_notes, dict) or not match_notes:
+            return False
+
+        breakdown = match_notes.get('breakdown')
+        if not isinstance(breakdown, dict) or not breakdown:
+            return False
+
+        allowed_keys = {'skill_score', 'experience_score', 'education_score'}
+        if any(key not in allowed_keys for key in breakdown):
+            return False
+
+        overall_score = match_notes.get('overall_score')
+        if not isinstance(overall_score, int):
+            return False
+
+        contribution_total = sum(
+            value for value in breakdown.values()
+            if isinstance(value, int)
+        )
+        return contribution_total == overall_score
+
     target_job = applicant.applied_job
     if target_job is None and applicant.job_preference_locked:
         # Applicant was locked to a job that has since been deleted; don't re-assign them
@@ -237,7 +312,7 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     # when the applicant's job FK changes (e.g. old job deleted → SET_NULL) or when
     # a new job is uploaded and this applicant has no locked preference — in both
     # cases applied_job_id will differ from target_job.id, so the guard is bypassed.
-    if applicant.applied_job_id == target_job.id and applicant.match_notes:
+    if applicant.applied_job_id == target_job.id and has_current_breakdown(applicant.match_notes):
         return applicant, None
 
     # Lazy resume parsing: only parse the file if structured fields are not already stored

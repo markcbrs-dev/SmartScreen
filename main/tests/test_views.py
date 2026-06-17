@@ -590,6 +590,113 @@ class JobUploadTests(TestCase):
 		self.assertIsNotNone(applicant.applied_job)
 		self.assertGreater(applicant.match_score, 0)
 		self.assertTrue(applicant.match_notes)
+		self.assertEqual(
+			applicant.match_notes.get('overall_score'),
+			sum(applicant.match_notes.get('breakdown', {}).values()),
+		)
+
+	def test_dashboard_recalculates_stale_breakdown_format(self):
+		job = replace_active_job_description(build_text_file(
+			'backend-role.txt',
+			'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nPython Django APIs\nBachelor of Science in Computer Science',
+		))
+
+		Applicant.objects.create(
+			first_name='Legacy',
+			last_name='Applicant',
+			contact_number='+63 912 111 2233',
+			email='legacy@example.com',
+			resume=build_docx_file(
+				'legacy.docx',
+				[
+					'Legacy Applicant',
+					'legacy@example.com',
+					'+63 912 111 2233',
+					'Python Django',
+					'Bachelor of Science in Computer Science',
+				],
+			),
+			applied_job=job,
+			position=job.title,
+			match_score=20,
+			match_notes={
+				'overall_score': 20,
+				'breakdown': {
+					'skill_score': 0,
+					'experience_score': 50,
+					'education_score': 50,
+				},
+			},
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		applicant = Applicant.objects.get(email='legacy@example.com')
+		self.assertEqual(
+			applicant.match_notes.get('overall_score'),
+			sum(applicant.match_notes.get('breakdown', {}).values()),
+		)
+
+	def test_dashboard_reparses_stale_degree_domain_job_skills(self):
+		job = JobDescription.objects.create(
+			title='Computer/IT Instructor',
+			company='FEU Institute of Technology',
+			location='Manila',
+			employment_type='Full-Time or Part-Time',
+			required_skills=['Information Technology', 'Computer Science'],
+			preferred_skills=['CSS', 'Programming', 'Teaching'],
+			education_requirements=['With Master\'s degree in IT/CS or any IT-related programs is a plus'],
+			raw_text=(
+				'Computer/IT Instructor\n'
+				'Company: FEU Institute of Technology\n'
+				'Location: Sampaloc, Manila\n'
+				'Employment Type: Full-Time or Part-Time\n'
+				'Qualifications\n'
+				'• Graduate of BSIT/BSCS.\n'
+				'• With Master\'s degree in IT/CS or any IT-related programs is a plus.\n'
+				'• A holder of applicable National Certification in CSS and Programming is a plus.\n'
+			),
+		)
+
+		Applicant.objects.create(
+			first_name='Jerome',
+			last_name='Lemuel',
+			contact_number='+63 912 333 4455',
+			email='jerome@example.com',
+			resume=build_docx_file(
+				'jerome.docx',
+				[
+					'Jerome Lemuel',
+					'jerome@example.com',
+					'+63 912 333 4455',
+					'CSS Programming',
+					'Bachelor of Science in Information Technology',
+				],
+			),
+			applied_job=job,
+			position=job.title,
+			parsed_skills=['CSS', 'Programming'],
+			parsed_education=['Bachelor of Science in Information Technology'],
+			match_notes={
+				'overall_score': 0,
+				'matching_skills': [],
+				'missing_skills': ['Information Technology', 'Computer Science'],
+				'breakdown': {'skill_score': 0},
+			},
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		job.refresh_from_db()
+		self.assertNotIn('Information Technology', job.required_skills)
+		self.assertNotIn('Computer Science', job.required_skills)
+		self.assertIn('CSS', job.preferred_skills)
+		self.assertIn('Programming', job.preferred_skills)
+		applicant = Applicant.objects.get(email='jerome@example.com')
+		self.assertNotIn('Information Technology', applicant.match_notes.get('missing_skills', []))
+		self.assertNotIn('Computer Science', applicant.match_notes.get('missing_skills', []))
 
 	def test_dashboard_keeps_applicant_matched_to_selected_job(self):
 		selected_job = replace_active_job_description(build_text_file(
@@ -727,6 +834,55 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'https://mail.google.com/mail/?', html=False)
 		self.assertContains(response, 'Open Email', html=False)
 		self.assertNotContains(response, 'Call Number', html=False)
+
+	def test_dashboard_renders_score_analysis_dialog_for_scored_applicants(self):
+		job = replace_active_job_description(build_text_file(
+			'backend-role.txt',
+			'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nPython Django APIs',
+		))
+		Applicant.objects.create(
+			first_name='Taylor',
+			last_name='Rivera',
+			contact_number='+63 912 222 3344',
+			email='taylor@example.com',
+			position=job.title,
+			applied_job=job,
+			job_preference_locked=True,
+			match_score=88,
+			match_notes={
+				'overall_score': 40,
+				'matching_skills': ['Python', 'Django'],
+				'missing_skills': ['Kubernetes'],
+				'breakdown': {
+					'skill_score': 10,
+					'experience_score': 20,
+					'education_score': 10,
+				},
+			},
+			resume=build_docx_file(
+				'taylor.docx',
+				[
+					'Taylor Rivera',
+					'taylor@example.com',
+					'+63 912 222 3344',
+				],
+			),
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Analyze Score')
+		self.assertContains(response, 'scoreBreakdownDialog-dashboard-', html=False)
+		self.assertContains(response, 'Taylor Rivera Score Analysis')
+		self.assertContains(response, 'Skill Match')
+		self.assertContains(response, '10%')
+		self.assertContains(response, 'class="db-score-bar-track"', html=False)
+		self.assertContains(response, 'class="db-score-bar-fill" data-score="10"', html=False)
+		self.assertContains(response, '40%')
+		self.assertContains(response, 'Matching Skills')
+		self.assertContains(response, 'Missing Skills')
+		self.assertContains(response, 'Kubernetes')
 
 	def test_dashboard_removes_applicant_from_status_tab(self):
 		applicant = Applicant.objects.create(

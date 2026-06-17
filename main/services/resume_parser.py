@@ -85,11 +85,23 @@ ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in
 
 
 class ResumeParser:
+    # Words that commonly follow a technology/skill name but are never part of a person's name.
+    # Extend this set if new tech-descriptor false-positives are reported.
+    _TECH_DESCRIPTOR_WORDS: frozenset[str] = frozenset({
+        'framework', 'library', 'runtime', 'engine', 'platform', 'sdk',
+        'language', 'tool', 'module', 'plugin', 'software', 'technology',
+        'technologies', 'scripting', 'stack', 'interface', 'database',
+        'server', 'service', 'cloud',
+    })
+
     def __init__(self, nlp_model: str = 'en_core_web_sm'):
         self._nlp = None               # Lazy-loaded spaCy model; only loaded when ENABLE_SPACY=1
         self._nlp_load_failed = False  # Flag to avoid retrying a failed load on every call
         self._nlp_model = nlp_model    # Change the NER model by passing a different name here
         self.common_skills = self._load_common_skills()  # Modify _load_common_skills() to add/remove skill keywords
+        # Lowercase set of all canonical skill names used to reject skill phrases
+        # that appear at the top of a resume and could be misread as a person's name.
+        self._skill_name_set: frozenset[str] = frozenset(s.lower() for s in self.common_skills)
 
     def parse(self, file_obj, filename: Optional[str] = None) -> ResumeProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
@@ -107,6 +119,8 @@ class ResumeParser:
             self._first_resume_parser_pro_value(pro_data.get('name')),
             fallback_name,
         )
+        if not profile.full_name:
+            profile.full_name = self._extract_name_from_filename(filename or getattr(file_obj, 'name', None))
         return profile
 
     def extract_text(self, file_obj, filename: Optional[str] = None) -> str:
@@ -235,6 +249,20 @@ class ResumeParser:
 
         return None
 
+    def _looks_like_skill_not_name(self, candidate: str) -> bool:
+        """Return True when *candidate* is almost certainly a skill name or tech phrase,
+        not a person's full name.  Two checks are applied:
+
+        1. Exact match against the canonical skill vocabulary (e.g. 'Machine Learning',
+           'Computer Science', 'Information Technology').
+        2. Any word in the candidate belongs to the tech-descriptor set (e.g. 'framework',
+           'library', 'platform') — catches phrases like 'Django Framework'.
+        """
+        normalized = candidate.lower().strip()
+        if normalized in self._skill_name_set:
+            return True
+        return bool(set(normalized.split()) & self._TECH_DESCRIPTOR_WORDS)
+
     def _normalize_full_name(self, value: Optional[str]) -> Optional[str]:
         if not value:
             return None
@@ -254,7 +282,13 @@ class ResumeParser:
             words.append(part.title())
 
         formatted = ' '.join(words).strip()
-        return formatted or None
+        if not formatted:
+            return None
+        # Final safety net: reject names that look like skill names or tech phrases
+        # (catches cases where resume_parser_pro itself returns a skill string as the name).
+        if self._looks_like_skill_not_name(formatted):
+            return None
+        return formatted
 
     def _select_best_full_name(self, primary_value: Optional[str], fallback_value: Optional[str]) -> Optional[str]:
         primary_name = self._normalize_full_name(primary_value)
@@ -335,9 +369,15 @@ class ResumeParser:
             ['experience', 'work experience', 'employment history', 'professional experience', 'education', 'projects', 'certifications', 'references'],
         )
         if skills_section_text:
-            return extract_canonical_skills(skills_section_text)
+            return self._filter_education_domain_skills(
+                skills_section_text,
+                extract_canonical_skills(skills_section_text),
+            )
 
-        return self._filter_ambiguous_full_text_skills(text, extract_canonical_skills(text))
+        return self._filter_ambiguous_full_text_skills(
+            text,
+            self._filter_education_domain_skills(text, extract_canonical_skills(text)),
+        )
 
     def extract_education(self, text: str) -> list[str]:
         # Add or remove keywords here to control which lines are captured as education entries
@@ -433,11 +473,44 @@ class ResumeParser:
             candidates.append(line)
             if index + 1 < len(raw_lines):
                 candidates.append(f'{line} {raw_lines[index + 1]}')
+            if index + 2 < len(raw_lines):
+                candidates.append(f'{line} {raw_lines[index + 1]} {raw_lines[index + 2]}')
 
         for candidate_text in candidates:
             candidate = self._normalize_name_candidate(candidate_text)
             if self._is_plausible_name_candidate(candidate):
                 return candidate
+
+        isolated_name = self._guess_name_from_isolated_lines(text)
+        if isolated_name:
+            return isolated_name
+        return None
+
+    def _guess_name_from_isolated_lines(self, text: str) -> Optional[str]:
+        raw_lines = [line.strip() for line in text.splitlines()[:24] if line.strip()]
+        single_word_candidates = []
+
+        for line in raw_lines:
+            normalized = self._normalize_name_candidate(line)
+            if ' ' in normalized or '@' in normalized or any(char.isdigit() for char in normalized):
+                continue
+            letters_only = re.sub(r'[^A-Za-z.-]', '', normalized)
+            if len(letters_only) < 2:
+                continue
+            if not any(char.isalpha() for char in normalized):
+                continue
+            if normalized.upper() != normalized and normalized.title() != normalized:
+                continue
+            if self._looks_like_skill_not_name(normalized):
+                continue
+            single_word_candidates.append(normalized)
+
+        for start in range(len(single_word_candidates)):
+            for length in range(2, min(4, len(single_word_candidates) - start) + 1):
+                candidate = ' '.join(single_word_candidates[start:start + length])
+                if self._is_plausible_name_candidate(candidate):
+                    return candidate
+
         return None
 
     def _normalize_name_candidate(self, line: str) -> str:
@@ -448,6 +521,18 @@ class ResumeParser:
             if len(parts) == 2:
                 candidate = f'{parts[1]} {parts[0]}'
         return candidate.strip(' -:\t')
+
+    def _extract_name_from_filename(self, filename: Optional[str]) -> Optional[str]:
+        if not filename:
+            return None
+
+        stem = os.path.splitext(os.path.basename(filename))[0]
+        candidate = re.sub(r'[_-]+', ' ', stem)
+        candidate = re.sub(r'\b(?:resume|cv|curriculum vitae)\b', '', candidate, flags=re.IGNORECASE)
+        candidate = self._normalize_name_candidate(candidate)
+        if not self._is_plausible_name_candidate(candidate):
+            return None
+        return self._normalize_full_name(candidate)
 
     def _is_plausible_name_candidate(self, candidate: str) -> bool:
         excluded_tokens = {'resume', 'curriculum vitae', 'cv', 'experience', 'education', 'skills', 'profile', 'summary'}
@@ -463,6 +548,9 @@ class ResumeParser:
         if normalized_candidate in excluded_tokens:
             return False
         if any(keyword in normalized_candidate for keyword in excluded_keywords):
+            return False
+        # Reject skill names and tech phrases (e.g. 'Django Framework', 'Machine Learning')
+        if self._looks_like_skill_not_name(candidate):
             return False
 
         words = candidate.split()
@@ -496,6 +584,34 @@ class ResumeParser:
                     continue
             filtered.append(skill)
         return filtered
+
+    def _filter_education_domain_skills(self, text: str, skills: list[str]) -> list[str]:
+        filtered = []
+        for skill in skills:
+            occurrences = [match.start() for match in re.finditer(re.escape(skill.lower()), text.lower())]
+            if self._should_skip_education_domain_skill(text, skill, occurrences):
+                continue
+            filtered.append(skill)
+        return filtered
+
+    def _should_skip_education_domain_skill(self, text: str, skill: str, occurrences: list[int]) -> bool:
+        if skill not in {'Information Technology', 'Computer Science'}:
+            return False
+        if not occurrences:
+            return False
+        return all(self._is_education_context(text, index, len(skill)) for index in occurrences)
+
+    def _is_education_context(self, text: str, start: int, length: int) -> bool:
+        window_start = max(0, start - 80)
+        window_end = min(len(text), start + length + 80)
+        context = text[window_start:window_end].lower()
+        education_markers = (
+            'bachelor', 'master', 'phd', 'doctorate', 'degree', 'graduate',
+            'bsit', 'bscs', 'bs cs', 'bs it', 'it/cs', 'cs/it', 'it-related',
+            'educational', 'qualification', 'qualifications', 'minimum qualifications',
+            'college', 'university', 'diploma', 'academic background', 'academic qualifications',
+        )
+        return any(marker in context for marker in education_markers)
 
     def _extract_first_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
         lines = text.splitlines()

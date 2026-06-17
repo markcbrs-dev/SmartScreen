@@ -110,6 +110,26 @@ class ResumeParserExtractionTests(SimpleTestCase):
 
         self.assertEqual(full_name, 'JUAN A. DELA CRUZ')
 
+    def test_guess_name_recovers_split_name_from_interleaved_pdf_text(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'EMPLOYMENT HISTORY:\n'
+            'CONSULTANT - LEAD SOFTWARE DEVELOPER\n'
+            'Irvine Analytics Solutions | January 2021 - Present\n'
+            'JOSE\n'
+            'ASSISTANT TO SENIOR PROJECT MANAGER\n'
+            'Solaire Resorts & Casino Manila\n'
+            'LORENZO\n'
+            'Internship (300 hours) | September 2018 - October 2018\n'
+            'FAELMAN\n'
+            'ACADEMIC BACKGROUND:\n'
+            'Web Developer\n'
+            'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES\n'
+        )
+
+        self.assertEqual(full_name, 'JOSE LORENZO FAELMAN')
+
     def test_extract_skills_normalizes_common_aliases(self):
         parser = ResumeParser()
 
@@ -144,6 +164,32 @@ class ResumeParserExtractionTests(SimpleTestCase):
 
         self.assertNotIn('Information Technology', skills)
         self.assertNotIn('Go', skills)
+
+    def test_extract_skills_excludes_degree_domains_from_education_context(self):
+        parser = ResumeParser()
+
+        skills = parser.extract_skills(
+            'Academic Background\n'
+            'Polytechnic University of the Philippines\n'
+            'Diploma in Information Technology\n'
+            'Bachelor of Science in Computer Science\n'
+        )
+
+        self.assertNotIn('Information Technology', skills)
+        self.assertNotIn('Computer Science', skills)
+
+    def test_extract_skills_keeps_information_technology_when_explicitly_used_as_skill(self):
+        parser = ResumeParser()
+
+        skills = parser.extract_skills(
+            'Skills\n'
+            'Information Technology\n'
+            'Python\n'
+            'Technical support\n'
+        )
+
+        self.assertIn('Information Technology', skills)
+        self.assertIn('Python', skills)
 
     def test_parse_uses_resume_parser_pro_as_fallback_for_basic_fields(self):
         parser = ResumeParser()
@@ -212,6 +258,17 @@ class ResumeParserExtractionTests(SimpleTestCase):
 
         self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
 
+    def test_parse_uses_filename_as_last_resort_for_name(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='Jose Lorenzo Faelman - Resume.pdf')
+
+        with patch.object(parser, 'extract_text', return_value='Unreadable extracted text'):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                    profile = parser.parse(resume_file, filename=resume_file.name)
+
+        self.assertEqual(profile.full_name, 'Jose Lorenzo Faelman')
+
     def test_parse_prefers_fallback_when_it_contains_more_complete_name_parts(self):
         parser = ResumeParser()
         resume_file = SimpleNamespace(name='resume.docx')
@@ -233,6 +290,40 @@ class ResumeParserExtractionTests(SimpleTestCase):
                     profile = parser.parse(resume_file, filename='resume.docx')
 
         self.assertEqual(profile.full_name, 'Juan A. Dela Cruz')
+
+    def test_guess_name_rejects_skill_framework_descriptor_as_applicant_name(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'Django Framework\n'
+            'juan@example.com\n'
+            '+63 912 345 6789\n'
+        )
+
+        self.assertIsNone(full_name)
+
+    def test_guess_name_rejects_canonical_skill_phrase_as_applicant_name(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'Machine Learning\n'
+            'ml@example.com\n'
+            '+63 912 345 6789\n'
+        )
+
+        self.assertIsNone(full_name)
+
+    def test_guess_name_accepts_real_name_when_skill_phrase_appears_first(self):
+        parser = ResumeParser()
+
+        full_name = parser._guess_name(
+            'Django Framework\n'
+            'Juan Dela Cruz\n'
+            'juan@example.com\n'
+            '+63 912 345 6789\n'
+        )
+
+        self.assertEqual(full_name, 'Juan Dela Cruz')
 
     def test_extract_education_prefers_education_section_over_keyword_noise(self):
         parser = ResumeParser()
@@ -322,6 +413,23 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
         self.assertIn('REST API', required)
         self.assertIn('Kubernetes', preferred)
         self.assertIn('Communication', preferred)
+
+    def test_extract_skills_excludes_degree_domains_from_qualification_lines(self):
+        parser = JobDescriptionParser()
+
+        required, preferred = parser.extract_skills(
+            'Qualifications\n'
+            '- Graduate of BSIT/BSCS\n'
+            '- With Master\'s degree in IT/CS or any IT-related programs is a plus\n'
+            '- A holder of applicable National Certification in CSS and Programming is a plus\n'
+        )
+
+        self.assertNotIn('Information Technology', required)
+        self.assertNotIn('Computer Science', required)
+        self.assertNotIn('Information Technology', preferred)
+        self.assertNotIn('Computer Science', preferred)
+        self.assertIn('CSS', preferred)
+        self.assertIn('Programming', preferred)
 
     def test_extract_responsibilities_preserves_txt_bullets_and_dashes(self):
         parser = JobDescriptionParser()
