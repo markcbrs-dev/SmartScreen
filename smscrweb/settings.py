@@ -3,8 +3,8 @@ smscrweb/settings.py — Django project settings for SmartScreen.
 
 HOW TO MODIFY
 -------------
-  Switch to PostgreSQL    → set DB_NAME env var (also DB_USER, DB_PASSWORD, DB_HOST, DB_PORT).
-                            Without DB_NAME, the app falls back to SQLite (db.sqlite3).
+    Configure PostgreSQL    → set DB_NAME env var (also DB_USER, DB_PASSWORD, DB_HOST, DB_PORT).
+                                                        SQLite fallback has been removed for this project.
   Add a new Django app    → add its AppConfig to INSTALLED_APPS.
   Add middleware          → append the dotted class path to MIDDLEWARE.
                             Order matters: authentication before custom middleware.
@@ -110,27 +110,36 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'smscrweb.wsgi.application'
 
-# Use SQLite locally unless PostgreSQL settings are supplied explicitly.
-postgres_name = os.getenv('DB_NAME')
+# PostgreSQL is required. Local and production environments must provide these
+# values via .env or exported environment variables.
+postgres_name = os.getenv('DB_NAME', '').strip()
+postgres_user = os.getenv('DB_USER', '').strip()
 
-if postgres_name:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': postgres_name,
-            'USER': os.getenv('DB_USER', ''),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', '127.0.0.1'),
-            'PORT': os.getenv('DB_PORT', '5432'),
-        }
+missing_db_vars = [
+    variable_name
+    for variable_name, variable_value in {
+        'DB_NAME': postgres_name,
+        'DB_USER': postgres_user,
+    }.items()
+    if not variable_value
+]
+if missing_db_vars:
+    raise ImproperlyConfigured(
+        'PostgreSQL configuration is incomplete. Missing environment variable(s): '
+        f'{", ".join(missing_db_vars)}. '
+        'Set DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, and DB_PORT in your .env or environment.'
+    )
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', ''),
+        'USER': os.getenv('DB_USER', ''),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+}
 
 
 # Password validation
