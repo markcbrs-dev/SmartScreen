@@ -279,6 +279,7 @@
                         </div>
                         <div class="db-dialog-content">
                           <div class="db-score-summary-card">
+                            <span class="db-score-breakdown-label">Overall Score</span>
                             <div class="db-score-summary-value">{{ a.match_notes.overall_score|default:a.match_score }}%</div>
                             <p class="db-score-summary-copy">Overall match score based on skill match, experience match, and education match.</p>
                           </div>
@@ -288,7 +289,7 @@
                             {% if a.match_notes.breakdown.skill_score or a.match_notes.breakdown.skill_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Skill Match</span>
+                                <span class="db-score-breakdown-label">Skill Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.skill_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">
@@ -299,7 +300,7 @@
                             {% if a.match_notes.breakdown.experience_score or a.match_notes.breakdown.experience_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Experience Match</span>
+                                <span class="db-score-breakdown-label">Experience Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.experience_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">
@@ -310,7 +311,7 @@
                             {% if a.match_notes.breakdown.education_score or a.match_notes.breakdown.education_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Education Match</span>
+                                <span class="db-score-breakdown-label">Education Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.education_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">
@@ -549,7 +550,7 @@
                             {% if a.match_notes.breakdown.skill_score or a.match_notes.breakdown.skill_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Skill Match</span>
+                                <span class="db-score-breakdown-label">Skill Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.skill_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">
@@ -560,7 +561,7 @@
                             {% if a.match_notes.breakdown.experience_score or a.match_notes.breakdown.experience_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Experience Match</span>
+                                <span class="db-score-breakdown-label">Experience Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.experience_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">
@@ -571,7 +572,7 @@
                             {% if a.match_notes.breakdown.education_score or a.match_notes.breakdown.education_score == 0 %}
                             <div class="db-score-breakdown-item">
                               <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Education Match</span>
+                                <span class="db-score-breakdown-label">Education Score</span>
                                 <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.education_score }}%</strong>
                               </div>
                               <div class="db-score-bar-track" aria-hidden="true">

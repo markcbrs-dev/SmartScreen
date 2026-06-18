@@ -71,8 +71,6 @@ _SKILL_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition('DevOps', 'hard', ('devops', 'dev ops')),
     SkillDefinition('Programming', 'hard', ('programming', 'coding')),
     SkillDefinition('Software Development', 'hard', ('software development', 'software engineering')),
-    SkillDefinition('Information Technology', 'hard', ('information technology', 'it')),
-    SkillDefinition('Computer Science', 'hard', ('computer science', 'cs')),
     SkillDefinition('Networking', 'hard', ('networking', 'computer networks')),
     SkillDefinition('Computer Hardware', 'hard', ('computer hardware', 'hardware troubleshooting')),
     SkillDefinition('Database Management', 'hard', ('database management', 'database administration')),
@@ -204,6 +202,11 @@ _SKILL_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition('Sanitation', 'hard', ('sanitation', 'sanitized', 'clean and sanitized', 'clean and organized')),
 )
 
+_EXCLUDED_NON_SKILLS = frozenset({
+    'information technology',
+    'computer science',
+})
+
 
 def _normalize_text(value: str) -> str:
     return ' '.join((value or '').strip().lower().split())
@@ -291,6 +294,8 @@ def get_canonical_skills(category: Optional[str] = None) -> list[str]:
 
 def canonicalize_skill_name(value: str) -> Optional[str]:
     normalized = _normalize_text(value)
+    if normalized in _EXCLUDED_NON_SKILLS:
+        return None
     return _CANONICAL_BY_ALIAS.get(normalized)
 
 
@@ -301,6 +306,8 @@ def canonicalize_skill_list(values: Iterable[str]) -> list[str]:
         resolved = canonicalize_skill_name(str(value))
         if resolved is None:
             resolved = normalize_title_text(str(value))
+        if _normalize_text(resolved or '') in _EXCLUDED_NON_SKILLS:
+            continue
         if resolved and resolved not in seen:
             seen.add(resolved)
             canonical.append(resolved)

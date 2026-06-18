@@ -105,23 +105,45 @@ class ResumeParser:
 
     def parse(self, file_obj, filename: Optional[str] = None) -> ResumeProfile:
         raw_text = self.extract_text(file_obj, filename=filename)
-        pro_data = self._parse_with_resume_parser_pro(file_obj, filename=filename)
         profile = ResumeProfile(raw_text=raw_text)
-        profile.email = self.extract_email(raw_text) or self._first_resume_parser_pro_value(pro_data.get('email'))
-        profile.phone = self.extract_phone(raw_text) or self._normalize_phone_number(
-            self._first_resume_parser_pro_value(pro_data.get('phone_number'))
-        )
+        profile.email = self.extract_email(raw_text)
+        profile.phone = self.extract_phone(raw_text)
         profile.skills = self.extract_skills(raw_text)
         profile.education = normalize_education_entries(self.extract_education(raw_text))
         profile.experience = normalize_list_text(self.extract_experience(raw_text))
         profile.organizations, profile.locations, fallback_name = self.extract_entities(raw_text)
+        pro_data = {}
+        if self._should_use_resume_parser_pro(fallback_name, profile.email, profile.phone):
+            pro_data = self._parse_with_resume_parser_pro(file_obj, filename=filename)
+            if not profile.email:
+                profile.email = self._first_resume_parser_pro_value(pro_data.get('email'))
+            if not profile.phone:
+                profile.phone = self._normalize_phone_number(
+                    self._first_resume_parser_pro_value(pro_data.get('phone_number'))
+                )
         profile.full_name = self._select_best_full_name(
             self._first_resume_parser_pro_value(pro_data.get('name')),
             fallback_name,
         )
+        filename_name = self._extract_name_from_filename(filename or getattr(file_obj, 'name', None))
+        if not raw_text.strip() and filename_name:
+            if not profile.full_name or not self._names_share_tokens(profile.full_name, filename_name):
+                profile.full_name = filename_name
         if not profile.full_name:
-            profile.full_name = self._extract_name_from_filename(filename or getattr(file_obj, 'name', None))
+            profile.full_name = filename_name
         return profile
+
+    def _should_use_resume_parser_pro(
+        self,
+        fallback_name: Optional[str],
+        email: Optional[str],
+        phone: Optional[str],
+    ) -> bool:
+        if ResumeParserPro is None:
+            return False
+        if not email or not phone:
+            return True
+        return self._count_name_parts(fallback_name or '') < 2
 
     def extract_text(self, file_obj, filename: Optional[str] = None) -> str:
         ext = self._get_extension(file_obj, filename)
@@ -310,6 +332,21 @@ class ResumeParser:
 
     def _count_name_parts(self, value: str) -> int:
         return len([part for part in value.split() if re.search(r'[A-Za-z]', part)])
+
+    def _names_share_tokens(self, left_name: str, right_name: str) -> bool:
+        left_tokens = {
+            token.lower()
+            for token in re.findall(r'[A-Za-z]+', left_name)
+            if len(token) > 1
+        }
+        right_tokens = {
+            token.lower()
+            for token in re.findall(r'[A-Za-z]+', right_name)
+            if len(token) > 1
+        }
+        if not left_tokens or not right_tokens:
+            return False
+        return bool(left_tokens & right_tokens)
 
     def _is_name_extension(self, shorter_name: str, longer_name: str) -> bool:
         shorter_parts = [part for part in shorter_name.lower().split() if part]

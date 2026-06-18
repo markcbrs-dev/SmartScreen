@@ -34,6 +34,7 @@ DEBUG
   NaN / 0 scores?      → check that resume_text / raw_text fields are not empty
 """
 
+import os
 import re
 from typing import Iterable, Optional
 
@@ -63,10 +64,13 @@ except ImportError:
     cosine_similarity = None
 
 _embedding_model = None
+ENABLE_SEMANTIC_MATCHING = os.environ.get('SMARTSCREEN_ENABLE_SEMANTIC_MATCHING', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def get_embedding_model():
     global _embedding_model
+    if not ENABLE_SEMANTIC_MATCHING:
+        return None
     if _embedding_model is None and SENTENCE_TRANSFORMERS_AVAILABLE:
         _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     return _embedding_model

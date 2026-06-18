@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from main.services.entities import JobProfile, ResumeProfile
+from main.services import matcher as matcher_module
 from main.services.matcher import ResumeJobMatcher
 from main.services.spacy_training import (
     load_seed_job_text_examples,
@@ -437,6 +438,22 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertGreaterEqual(result.skill_match_score, 0.7)
         self.assertGreaterEqual(result.overall_score, 0.65)
+
+    def test_get_embedding_model_is_disabled_by_default_for_fast_requests(self):
+        original_flag = matcher_module.ENABLE_SEMANTIC_MATCHING
+        original_model = matcher_module._embedding_model
+        matcher_module.ENABLE_SEMANTIC_MATCHING = False
+        matcher_module._embedding_model = None
+
+        try:
+            with patch.object(matcher_module, 'SentenceTransformer') as sentence_transformer:
+                model = matcher_module.get_embedding_model()
+        finally:
+            matcher_module.ENABLE_SEMANTIC_MATCHING = original_flag
+            matcher_module._embedding_model = original_model
+
+        sentence_transformer.assert_not_called()
+        self.assertIsNone(model)
 
     def test_estimate_experience_level_uses_explicit_years(self):
         matcher = ResumeJobMatcher()

@@ -11,7 +11,9 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 from main.services.job_parser import JobDescriptionParser
+from main.services.matcher import ResumeJobMatcher
 from main.services.resume_parser import ResumeParser
+from main.services.skills import canonicalize_skill_list
 
 
 class StubNlp:
@@ -188,8 +190,27 @@ class ResumeParserExtractionTests(SimpleTestCase):
             'Technical support\n'
         )
 
-        self.assertIn('Information Technology', skills)
+        self.assertNotIn('Information Technology', skills)
         self.assertIn('Python', skills)
+
+    def test_canonicalize_skill_list_drops_degree_domain_labels(self):
+        skills = canonicalize_skill_list(['Information Technology', 'Computer Science', 'Python'])
+
+        self.assertEqual(skills, ['Python'])
+
+    def test_matcher_missing_skills_excludes_degree_domain_labels(self):
+        matcher = ResumeJobMatcher()
+
+        score, matching_skills, missing_skills = matcher.calculate_skill_match(
+            ['Python'],
+            ['Information Technology', 'Computer Science', 'Python'],
+            [],
+        )
+
+        self.assertGreater(score, 0)
+        self.assertEqual(matching_skills, ['Python'])
+        self.assertNotIn('Information Technology', missing_skills)
+        self.assertNotIn('Computer Science', missing_skills)
 
     def test_parse_uses_resume_parser_pro_as_fallback_for_basic_fields(self):
         parser = ResumeParser()
@@ -203,6 +224,24 @@ class ResumeParserExtractionTests(SimpleTestCase):
             }):
                 profile = parser.parse(resume_file, filename='resume.docx')
 
+        self.assertEqual(profile.full_name, 'Jane Applicant')
+        self.assertEqual(profile.email, 'jane@example.com')
+        self.assertEqual(profile.phone, '+63 912 345 6789')
+
+    def test_parse_skips_resume_parser_pro_when_basic_fields_are_found_locally(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+
+        with patch.object(
+            parser,
+            'extract_text',
+            return_value='Jane Applicant\njane@example.com\n09123456789\nPython Developer',
+        ):
+            with patch.object(parser, 'extract_entities', return_value=([], [], 'Jane Applicant')):
+                with patch.object(parser, '_parse_with_resume_parser_pro') as pro_parser:
+                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        pro_parser.assert_not_called()
         self.assertEqual(profile.full_name, 'Jane Applicant')
         self.assertEqual(profile.email, 'jane@example.com')
         self.assertEqual(profile.phone, '+63 912 345 6789')
@@ -268,6 +307,17 @@ class ResumeParserExtractionTests(SimpleTestCase):
                     profile = parser.parse(resume_file, filename=resume_file.name)
 
         self.assertEqual(profile.full_name, 'Jose Lorenzo Faelman')
+
+    def test_parse_prefers_filename_when_empty_text_conflicts_with_resume_parser_pro_name(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='Jerome Lemuel Faelman - Resume.pdf')
+
+        with patch.object(parser, 'extract_text', return_value=''):
+            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={'name': 'FEU Roosevelt'}):
+                with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                    profile = parser.parse(resume_file, filename=resume_file.name)
+
+        self.assertEqual(profile.full_name, 'Jerome Lemuel Faelman')
 
     def test_parse_prefers_fallback_when_it_contains_more_complete_name_parts(self):
         parser = ResumeParser()
