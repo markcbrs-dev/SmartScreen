@@ -281,8 +281,20 @@
                           <div class="db-score-summary-card">
                             <span class="db-score-breakdown-label">Overall Score</span>
                             <div class="db-score-summary-value">{{ a.match_notes.overall_score|default:a.match_score }}%</div>
-                            <p class="db-score-summary-copy">Overall match score based on skill match, experience match, and education match.</p>
                           </div>
+
+                          <section class="db-score-detail-section">
+                            <h4 class="db-job-detail-section-title">Recommendation</h4>
+                            {% if a.match_notes.recommendation.job_title %}
+                            <p class="db-score-summary-copy">
+                              Better fit found: <strong>{{ a.match_notes.recommendation.job_title }}</strong>
+                              ({{ a.match_notes.recommendation.overall_score }}%) instead of
+                              {{ a.position|default:"the current applied role" }}.
+                            </p>
+                            {% else %}
+                            <p class="db-score-summary-copy">This applicant currently fits their applied role best among the uploaded job descriptions.</p>
+                            {% endif %}
+                          </section>
 
                           {% if a.match_notes.breakdown %}
                           <div class="db-score-breakdown-grid">
@@ -544,6 +556,19 @@
                             <div class="db-score-summary-value">{{ a.match_notes.overall_score|default:a.match_score }}%</div>
                             <p class="db-score-summary-copy">Overall match score based on skill match, experience match, and education match.</p>
                           </div>
+
+                          <section class="db-score-detail-section">
+                            <h4 class="db-job-detail-section-title">Recommendation</h4>
+                            {% if a.match_notes.recommendation.job_title %}
+                            <p class="db-score-summary-copy">
+                              Better fit found: <strong>{{ a.match_notes.recommendation.job_title }}</strong>
+                              ({{ a.match_notes.recommendation.overall_score }}%) instead of
+                              {{ a.position|default:"the current applied role" }}.
+                            </p>
+                            {% else %}
+                            <p class="db-score-summary-copy">This applicant currently fits their applied role best among the uploaded job descriptions.</p>
+                            {% endif %}
+                          </section>
 
                           {% if a.match_notes.breakdown %}
                           <div class="db-score-breakdown-grid">

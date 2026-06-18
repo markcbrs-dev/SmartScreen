@@ -82,6 +82,7 @@ from .services import (
     refresh_applicant_matches,
     remove_active_job_description,
     replace_active_job_description,
+    score_resume_against_jobs,
     serialize_match_result,
     update_applicant_from_resume_profile,
     update_job_from_profile,
@@ -541,7 +542,7 @@ def dashboard(request):
         job.description_preview_excerpt_sections = _build_dashboard_preview_sections(_about_text)
     active_job = jobs[0] if jobs else None
     applicants = list(Applicant.objects.select_related('applied_job').all().order_by('-created_at'))
-    applicants = refresh_applicant_matches(applicants, active_job)
+    applicants = refresh_applicant_matches(applicants, jobs)
 
     grouped_applicants: dict[tuple[str, object], list[Applicant]] = defaultdict(list)
     for applicant in applicants:
@@ -820,11 +821,27 @@ def apply(request):
                 selected_job=selected_job,
             )
             if matched_job is not None and match_result is not None:
+                scored_jobs = score_resume_against_jobs(resume_profile, available_jobs)
+                recommendation_job = None
+                recommendation_result = None
+                for job, result in scored_jobs:
+                    if job.id == matched_job.id:
+                        continue
+                    if recommendation_result is None or result.overall_score > recommendation_result.overall_score:
+                        recommendation_job = job
+                        recommendation_result = result
+
                 applicant.applied_job = matched_job
                 applicant.job_preference_locked = selected_job is not None
                 applicant.position = matched_job.title
                 applicant.match_score = round(match_result.overall_score * 100)
-                applicant.match_notes = serialize_match_result(match_result)
+                applicant.match_notes = serialize_match_result(
+                    match_result,
+                    matched_job=matched_job,
+                    recommendation_job=recommendation_job,
+                    recommendation_result=recommendation_result,
+                    scored_jobs=scored_jobs,
+                )
                 applicant.save(update_fields=[
                     'applied_job',
                     'job_preference_locked',

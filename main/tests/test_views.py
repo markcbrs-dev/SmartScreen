@@ -214,6 +214,57 @@ class ApplicantFlowTests(TestCase):
 		self.assertTrue(applicant.job_preference_locked)
 		self.assertIn('Python', applicant.parsed_skills)
 		self.assertGreaterEqual(applicant.match_score, 1)
+		self.assertEqual(applicant.match_notes.get('matched_job', {}).get('job_title'), job.title)
+		self.assertEqual(applicant.match_notes.get('scored_job_count'), 1)
+
+	def test_apply_scores_resume_against_all_uploaded_jobs_for_recommendation(self):
+		selected_job = replace_active_job_description(build_text_file(
+			'room-attendant.txt',
+			'Job Title: Room Attendant\n'
+			'Company: SmartScreen Resort\n'
+			'Responsibilities\n'
+			'Clean guest rooms and replace linens\n'
+			'Qualifications\n'
+			'Housekeeping Laundry Cleaning Bed Making\n',
+		))
+		recommended_job = replace_active_job_description(build_text_file(
+			'kids-attendant.txt',
+			'Job Title: Kids Attendant\n'
+			'Company: SmartScreen Resort\n'
+			'Responsibilities\n'
+			'Supervise children and facilitate play activities\n'
+			'Qualifications\n'
+			'Childcare Play Activities Guest Engagement Communication First Aid\n',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'job_id': str(selected_job.id),
+				'resume': build_docx_file(
+					'kids-attendant-resume.docx',
+					[
+						'Jamie Applicant',
+						'jamie@example.com',
+						'09123450000',
+						'Childcare play activities guest engagement communication first aid',
+						'Experienced in supervising children at family resort programs',
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		applicant = Applicant.objects.get()
+		self.assertEqual(applicant.applied_job, selected_job)
+		self.assertEqual(applicant.position, selected_job.title)
+		self.assertEqual(applicant.match_notes.get('scored_job_count'), 2)
+		self.assertEqual(applicant.match_notes.get('recommendation', {}).get('job_title'), recommended_job.title)
+		self.assertGreater(
+			applicant.match_notes.get('recommendation', {}).get('overall_score', 0),
+			applicant.match_notes.get('overall_score', 0),
+		)
 
 	@skipUnless(importlib.util.find_spec('en_core_web_sm') is not None, 'en_core_web_sm is not installed')
 	def test_apply_with_real_spacy_ner_extracts_resume_location_from_docx(self):
@@ -595,6 +646,43 @@ class JobUploadTests(TestCase):
 			sum(applicant.match_notes.get('breakdown', {}).values()),
 		)
 
+	def test_dashboard_repairs_previously_saved_bad_applicant_name(self):
+		job = replace_active_job_description(build_text_file(
+			'python-instructor.txt',
+			'Job Title: Python Programming Instructor\nCompany: FEU Institute of Technology\nLocation: Manila\nPython JavaScript teaching CSS',
+		))
+
+		Applicant.objects.create(
+			first_name='Feu',
+			last_name='Roosevelt',
+			contact_number='+63 912 333 4455',
+			email='faelman.jeromelemuel@gmail.com',
+			resume=SimpleUploadedFile(
+				'Jerome Lemuel Faelman - Resume.pdf',
+				b'%PDF-1.4\n%',
+				content_type='application/pdf',
+			),
+			applied_job=job,
+			job_preference_locked=True,
+			position=job.title,
+			match_score=20,
+			match_notes={
+				'overall_score': 20,
+				'breakdown': {
+					'skill_score': 10,
+					'experience_score': 5,
+					'education_score': 5,
+				},
+			},
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		applicant = Applicant.objects.get(email='faelman.jeromelemuel@gmail.com')
+		self.assertEqual(applicant.first_name, 'Jerome')
+		self.assertEqual(applicant.last_name, 'Lemuel Faelman')
+
 	def test_dashboard_recalculates_stale_breakdown_format(self):
 		job = replace_active_job_description(build_text_file(
 			'backend-role.txt',
@@ -851,8 +939,15 @@ class JobUploadTests(TestCase):
 			match_score=88,
 			match_notes={
 				'overall_score': 40,
+				'target_job_id': job.id,
+				'scored_job_ids': [job.id],
 				'matching_skills': ['Python', 'Django'],
 				'missing_skills': ['Kubernetes'],
+				'recommendation': {
+					'job_id': 999,
+					'job_title': 'Kids Attendant',
+					'overall_score': 73,
+				},
 				'breakdown': {
 					'skill_score': 10,
 					'experience_score': 20,
@@ -883,6 +978,9 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Matching Skills')
 		self.assertContains(response, 'Missing Skills')
 		self.assertContains(response, 'Kubernetes')
+		self.assertContains(response, 'Recommendation')
+		self.assertContains(response, 'Kids Attendant')
+		self.assertContains(response, '73%')
 
 	def test_dashboard_removes_applicant_from_status_tab(self):
 		applicant = Applicant.objects.create(
