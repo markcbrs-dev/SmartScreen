@@ -95,6 +95,7 @@ class Applicant(models.Model):
     ]
 
     first_name = EncryptedTextField(default='')
+    middle_name = EncryptedTextField(default='')
     last_name = EncryptedTextField(default='')
     contact_number = EncryptedTextField(default='')
     email = EncryptedTextField(default='')
@@ -132,8 +133,11 @@ class Applicant(models.Model):
         
         super(Applicant, self).save(*args, **kwargs)
 
+    def get_full_name(self):
+        return ' '.join(part for part in [self.first_name, self.middle_name, self.last_name] if part).strip()
+
     def __str__(self):
-        return f"{self.first_name} {self.last_name} <{self.email}>"
+        return f"{self.get_full_name()} <{self.email}>"
 
 
 # -----------------------------------------------------------------------

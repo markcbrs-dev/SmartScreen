@@ -206,6 +206,7 @@ class ApplicantFlowTests(TestCase):
 		self.assertNotContains(response, 'Best match:')
 		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.first_name, 'Jane')
+		self.assertEqual(applicant.middle_name, '')
 		self.assertEqual(applicant.last_name, 'Applicant')
 		self.assertEqual(applicant.contact_number, '+63 912 345 6789')
 		self.assertEqual(applicant.email, 'jane@example.com')
@@ -216,6 +217,35 @@ class ApplicantFlowTests(TestCase):
 		self.assertGreaterEqual(applicant.match_score, 1)
 		self.assertEqual(applicant.match_notes.get('matched_job', {}).get('job_title'), job.title)
 		self.assertEqual(applicant.match_notes.get('scored_job_count'), 1)
+
+	def test_apply_stores_middle_initial_separately_from_last_name(self):
+		job = replace_active_job_description(build_text_file(
+			'painter.txt',
+			'Job Title: Painter\nCompany: SmartScreen Builders\nLocation: Antipolo\nPainter Putty Exterior painting',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'job_id': str(job.id),
+				'resume': build_docx_file(
+					'marlou-resume.docx',
+					[
+						'Marlou R. Saysay',
+						'marlousaysay99@gmail.com',
+						'09451386454',
+						'Painter Putty Exterior painting',
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		applicant = Applicant.objects.get(email='marlousaysay99@gmail.com')
+		self.assertEqual(applicant.first_name, 'Marlou')
+		self.assertEqual(applicant.middle_name, 'R.')
+		self.assertEqual(applicant.last_name, 'Saysay')
 
 	def test_apply_scores_resume_against_all_uploaded_jobs_for_recommendation(self):
 		selected_job = replace_active_job_description(build_text_file(
@@ -296,6 +326,7 @@ class ApplicantFlowTests(TestCase):
 		self.assertContains(response, 'Application submitted successfully.')
 		applicant = Applicant.objects.get()
 		self.assertEqual(applicant.first_name, 'Barack')
+		self.assertEqual(applicant.middle_name, '')
 		self.assertEqual(applicant.last_name, 'Obama')
 		self.assertEqual(applicant.contact_number, '+63 912 345 6780')
 		self.assertEqual(applicant.email, 'barack@example.com')
@@ -681,7 +712,8 @@ class JobUploadTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		applicant = Applicant.objects.get(email='faelman.jeromelemuel@gmail.com')
 		self.assertEqual(applicant.first_name, 'Jerome')
-		self.assertEqual(applicant.last_name, 'Lemuel Faelman')
+		self.assertEqual(applicant.middle_name, 'Lemuel')
+		self.assertEqual(applicant.last_name, 'Faelman')
 
 	def test_dashboard_recalculates_stale_breakdown_format(self):
 		job = replace_active_job_description(build_text_file(
@@ -930,6 +962,7 @@ class JobUploadTests(TestCase):
 		))
 		Applicant.objects.create(
 			first_name='Taylor',
+			middle_name='',
 			last_name='Rivera',
 			contact_number='+63 912 222 3344',
 			email='taylor@example.com',

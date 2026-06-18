@@ -253,7 +253,7 @@ def update_job_from_profile(job, profile: JobProfile) -> None:
 
 def build_resume_profile_from_applicant(applicant) -> ResumeProfile:
     return ResumeProfile(
-        full_name=f'{applicant.first_name} {applicant.last_name}'.strip(),
+        full_name=' '.join(part for part in [applicant.first_name, applicant.middle_name, applicant.last_name] if part).strip(),
         email=applicant.email,
         phone=applicant.contact_number,
         skills=list(applicant.parsed_skills or []),
@@ -292,7 +292,7 @@ def _count_email_name_token_matches(name: str, email: str) -> int:
 
 def _repair_applicant_name(applicant) -> None:
     parser = get_resume_parser()
-    current_name = parser._normalize_full_name(f'{applicant.first_name} {applicant.last_name}'.strip())
+    current_name = parser._normalize_full_name(' '.join(part for part in [applicant.first_name, applicant.middle_name, applicant.last_name] if part).strip())
     resume_text_name = parser._guess_name(applicant.resume_text or '') if applicant.resume_text else None
 
     resume_name = getattr(getattr(applicant, 'resume', None), 'name', None)
@@ -323,15 +323,17 @@ def _repair_applicant_name(applicant) -> None:
         ):
             return
 
-    name_parts = derived_name.split(None, 1)
-    first_name = name_parts[0][:100]
-    last_name = name_parts[1][:100] if len(name_parts) > 1 else ''
-    if applicant.first_name == first_name and applicant.last_name == last_name:
+    first_name, middle_name, last_name = parser.split_name_components(derived_name)
+    first_name = first_name[:100]
+    middle_name = middle_name[:100]
+    last_name = last_name[:100]
+    if applicant.first_name == first_name and applicant.middle_name == middle_name and applicant.last_name == last_name:
         return
 
     applicant.first_name = first_name
+    applicant.middle_name = middle_name
     applicant.last_name = last_name
-    applicant.save(update_fields=['first_name', 'last_name'])
+    applicant.save(update_fields=['first_name', 'middle_name', 'last_name'])
 
 
 # -----------------------------------------------------------------------

@@ -203,7 +203,7 @@
                   <td>
                     <div class="db-applicant-cell">
                       <div>
-                        <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
+                        <div class="db-applicant-name">{{ a.get_full_name }}</div>
                         <div class="db-applicant-email">{{ a.email }}</div>
                         {% if a.parsed_skills %}
                           <div class="db-applicant-meta">Skills: {{ a.parsed_skills|slice:":4"|join:", " }}</div>
@@ -265,7 +265,7 @@
                       <div class="db-dialog-shell db-score-dialog-shell">
                         <div class="db-dialog-header">
                           <div>
-                            <h3 class="db-dialog-title">{{ a.first_name }} {{ a.last_name }} Score Analysis</h3>
+                            <h3 class="db-dialog-title">{{ a.get_full_name }} Score Analysis</h3>
                             <p class="db-dialog-subtitle">Breakdown for {{ a.position|default:"Pending match" }}</p>
                           </div>
                           <button
@@ -449,7 +449,7 @@
                   <td>
                     <div class="db-applicant-cell">
                       <div>
-                        <div class="db-applicant-name">{{ a.first_name }} {{ a.last_name }}</div>
+                        <div class="db-applicant-name">{{ a.get_full_name }}</div>
                         <div class="db-applicant-email">{{ a.email }}</div>
                         <div class="db-applicant-meta">{{ a.contact_number }}</div>
                       </div>
@@ -481,7 +481,7 @@
                         type="button"
                         class="db-btn-contact js-open-contact-dialog"
                         title="Contact {{ a.email }}"
-                        data-contact-name="{{ a.first_name }} {{ a.last_name }}"
+                        data-contact-name="{{ a.get_full_name }}"
                         data-contact-email="{{ a.email }}"
                         data-contact-phone="{{ a.contact_number|default:'' }}"
                         data-contact-position="{{ a.position|default:'Applicant' }}"
@@ -505,7 +505,7 @@
                         type="button"
                         class="db-btn-contact js-open-contact-dialog"
                         title="Send interview invitation to {{ a.email }}"
-                        data-contact-name="{{ a.first_name }} {{ a.last_name }}"
+                        data-contact-name="{{ a.get_full_name }}"
                         data-contact-email="{{ a.email }}"
                         data-contact-phone="{{ a.contact_number|default:'' }}"
                         data-contact-position="{{ a.position|default:'Applicant' }}"
@@ -539,7 +539,7 @@
                       <div class="db-dialog-shell db-score-dialog-shell">
                         <div class="db-dialog-header">
                           <div>
-                            <h3 class="db-dialog-title">{{ a.first_name }} {{ a.last_name }} Score Analysis</h3>
+                            <h3 class="db-dialog-title">{{ a.get_full_name }} Score Analysis</h3>
                             <p class="db-dialog-subtitle">Breakdown for {{ a.position|default:"Pending match" }}</p>
                           </div>
                           <button

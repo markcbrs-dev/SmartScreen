@@ -78,6 +78,7 @@ from .services import (
     get_active_job_description,
     get_active_job_descriptions,
     get_job_description_by_id,
+    get_resume_parser,
     parse_resume_upload,
     refresh_applicant_matches,
     remove_active_job_description,
@@ -501,7 +502,7 @@ def dashboard(request):
             if applicant is None:
                 messages.error(request, 'Applicant not found.')
             else:
-                applicant_name = f'{applicant.first_name} {applicant.last_name}'.strip()
+                applicant_name = applicant.get_full_name()
                 if applicant.resume:
                     applicant.resume.delete(save=False)
                 applicant.delete()
@@ -526,7 +527,7 @@ def dashboard(request):
                 applicant.status = new_status
                 applicant.save(update_fields=['status'])
                 label = dict(Applicant.STATUS_CHOICES).get(new_status, new_status)
-                messages.success(request, f'{applicant.first_name} {applicant.last_name} moved to "{label}".')
+                messages.success(request, f'{applicant.get_full_name()} moved to "{label}".')
             return redirect_to_dashboard(redirect_panel)
 
     jobs = get_active_job_descriptions()
@@ -783,12 +784,16 @@ def apply(request):
                 messages.error(request, f'We could not extract the following from the uploaded resume: {missing_label}.')
             return render(request, 'main/applicant.html', context)
 
-        name_parts = full_name.split(None, 1)
-        first_name = name_parts[0]
-        last_name = name_parts[1] if len(name_parts) > 1 else ''
+        first_name, middle_name, last_name = get_resume_parser().split_name_components(full_name)
+        if not first_name and not last_name:
+            name_parts = full_name.split(None, 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            middle_name = ''
 
-        if len(first_name) > 100 or len(last_name) > 100:
+        if len(first_name) > 100 or len(middle_name) > 100 or len(last_name) > 100:
             first_name = first_name[:100]
+            middle_name = middle_name[:100]
             last_name = last_name[:100]
 
         if email:
@@ -799,6 +804,7 @@ def apply(request):
 
         applicant = Applicant.objects.create(
             first_name=first_name,
+            middle_name=middle_name,
             last_name=last_name,
             contact_number=contact,
             email=email,

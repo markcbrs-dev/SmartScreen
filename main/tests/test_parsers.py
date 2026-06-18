@@ -61,6 +61,24 @@ class ResumeParserNerTests(SimpleTestCase):
         self.assertEqual(locations, ['Cebu City'])
         self.assertEqual(full_name, 'Jane Applicant')
 
+    def test_extract_entities_prefers_more_complete_guessed_name_over_shorter_person_entity(self):
+        parser = ResumeParser()
+        parser._nlp = StubNlp([
+            make_entity('Marlou R.', 'PERSON'),
+            make_entity('Antipolo City', 'GPE'),
+        ])
+
+        organizations, locations, full_name = parser.extract_entities(
+            'Marlou R.\n'
+            'Saysay\n'
+            'marlousaysay99@gmail.com\n'
+            'Antipolo City\n'
+        )
+
+        self.assertEqual(organizations, [])
+        self.assertEqual(locations, ['Antipolo City'])
+        self.assertEqual(full_name, 'Marlou R. Saysay')
+
     @skipUnless(importlib.util.find_spec('en_core_web_sm') is not None, 'en_core_web_sm is not installed')
     def test_extract_entities_uses_real_spacy_model_when_enabled(self):
         parser = ResumeParser()
@@ -76,6 +94,40 @@ class ResumeParserNerTests(SimpleTestCase):
 
 
 class ResumeParserExtractionTests(SimpleTestCase):
+    def test_extract_text_from_pdf_prefers_pymupdf_when_available(self):
+        parser = ResumeParser()
+        pdf_file = BytesIO(b'%PDF-1.4 fake pdf bytes')
+
+        class StubPage:
+            def get_text(self):
+                return 'Marlou resume text'
+
+        class StubPdf:
+            def __enter__(self):
+                return [StubPage()]
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch('main.services.resume_parser.fitz.open', return_value=StubPdf()) as fitz_open:
+            with patch('main.services.resume_parser.pdfplumber') as pdfplumber_module:
+                with patch('main.services.resume_parser.PdfReader') as pdf_reader:
+                    text = parser._extract_text_from_pdf(pdf_file)
+
+        fitz_open.assert_called_once()
+        pdfplumber_module.open.assert_not_called()
+        pdf_reader.assert_not_called()
+        self.assertEqual(text, 'Marlou resume text')
+
+    def test_split_name_components_separates_middle_initial_from_last_name(self):
+        parser = ResumeParser()
+
+        first_name, middle_name, last_name = parser.split_name_components('Marlou R. Saysay')
+
+        self.assertEqual(first_name, 'Marlou')
+        self.assertEqual(middle_name, 'R.')
+        self.assertEqual(last_name, 'Saysay')
+
     def test_guess_name_accepts_name_label_prefix(self):
         parser = ResumeParser()
 

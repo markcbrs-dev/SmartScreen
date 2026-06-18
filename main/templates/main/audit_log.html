@@ -46,7 +46,7 @@
               <span class="badge bg-secondary">{{ log.history_type }}</span>
             {% endif %}
           </td>
-          <td>{{ log.first_name }} {{ log.last_name }}</td>
+          <td>{{ log.first_name }}{% if log.middle_name %} {{ log.middle_name }}{% endif %} {{ log.last_name }}</td>
           <td>{{ log.status }}</td>
           <td>
             {% if log.match_score is not None %}

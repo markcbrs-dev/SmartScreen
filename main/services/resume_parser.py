@@ -8,7 +8,7 @@ It accepts a file-like object (PDF or DOCX) and returns a ResumeProfile dataclas
 
 EXTRACTION PIPELINE
 -------------------
-  1. extract_text()      — reads raw text from PDF (pdfplumber → PyPDF2 fallback) or DOCX
+    1. extract_text()      — reads raw text from PDF (PyMuPDF → pdfplumber → PyPDF2 fallback) or DOCX
   2. extract_email()     — regex: finds first valid email address
   3. extract_phone()     — regex: finds first valid phone number
   4. extract_skills()    — keyword match against common_skills vocabulary
@@ -25,13 +25,13 @@ HOW TO MODIFY
   Change experience keywords→ edit the `keywords` list in extract_experience()
   Enable spaCy NER        → set env var SMARTSCREEN_ENABLE_SPACY=1 and install en_core_web_sm
   Change NLP model        → pass nlp_model='...' to ResumeParser() in recruitment.py
-  Change PDF extraction   → edit _extract_text_from_pdf() (primary: pdfplumber, fallback: PyPDF2)
+    Change PDF extraction   → edit _extract_text_from_pdf() (primary: PyMuPDF, fallbacks: pdfplumber, PyPDF2)
   Change DOCX extraction  → edit _extract_text_from_docx()
   Increase name-guessing  → edit _guess_name() (currently scans first 8 lines)
 
 DEBUG
 -----
-  No text extracted?    → check that pdfplumber and PyPDF2 are installed; check resume file format
+    No text extracted?    → check that PyMuPDF, pdfplumber, or PyPDF2 are installed; check resume file format
   Skills always empty?  → check _load_common_skills() and that resume has recognisable keywords
   Name always None?     → check _guess_name(); resume may not have the name on a clean first line
   spaCy not running?    → check SMARTSCREEN_ENABLE_SPACY env var and en_core_web_sm installation
@@ -54,6 +54,11 @@ from .skills import (
 )
 
 logger = logging.getLogger(__name__)
+
+try:
+    import fitz
+except ImportError:
+    fitz = None
 
 try:
     import pdfplumber
@@ -158,8 +163,23 @@ class ResumeParser:
             file_obj.seek(0)
 
         text = ''
-        # Primary extraction: pdfplumber handles multi-column and complex layouts better
-        if pdfplumber is not None:
+        # Primary extraction: PyMuPDF is faster and preserves more text on the
+        # resume PDFs we see locally, especially when layout extraction is sparse.
+        if fitz is not None:
+            try:
+                with fitz.open(stream=file_obj.read(), filetype='pdf') as pdf:
+                    for page in pdf:
+                        page_text = page.get_text()
+                        if page_text:
+                            text += page_text + '\n'
+            except Exception:
+                logger.exception('PyMuPDF failed to extract resume text.')
+                text = ''
+
+        # Fallback to pdfplumber if PyMuPDF returned very little text.
+        if len(text.strip()) < 100 and pdfplumber is not None:
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
             try:
                 with pdfplumber.open(file_obj) as pdf:
                     for page in pdf.pages:
@@ -170,8 +190,7 @@ class ResumeParser:
                 logger.exception('pdfplumber failed to extract resume text.')
                 text = ''
 
-        # Fallback to PyPDF2 if pdfplumber returned less than 100 characters
-        # (e.g. scanned/image-based PDF where pdfplumber finds no text)
+        # Final fallback to PyPDF2 if richer extractors returned very little text.
         if len(text.strip()) < 100:
             if PdfReader is None:
                 raise ValueError('PDF support is not installed. Add PyPDF2 to parse resume uploads.')
@@ -330,6 +349,26 @@ class ResumeParser:
             return fallback_name
         return primary_name
 
+    def split_name_components(self, full_name: Optional[str]) -> tuple[str, str, str]:
+        normalized_name = self._normalize_full_name(full_name)
+        if not normalized_name:
+            return '', '', ''
+
+        parts = normalized_name.split()
+        if len(parts) == 1:
+            return parts[0], '', ''
+        if len(parts) == 2:
+            return parts[0], '', parts[1]
+
+        middle_parts = parts[1:-1]
+        middle_initial_parts = [part for part in middle_parts if self._is_middle_initial(part)]
+        middle_name = ' '.join(middle_initial_parts or middle_parts)
+        return parts[0], middle_name, parts[-1]
+
+    def _is_middle_initial(self, value: str) -> bool:
+        compact = re.sub(r'[^A-Za-z.]', '', value or '')
+        return bool(re.fullmatch(r'[A-Za-z]\.?', compact))
+
     def _count_name_parts(self, value: str) -> int:
         return len([part for part in value.split() if re.search(r'[A-Za-z]', part)])
 
@@ -460,6 +499,7 @@ class ResumeParser:
         organizations = []
         locations = []
         full_name = None
+        guessed_name = None
         nlp = self._get_nlp()
         if nlp is not None and text.strip():
             # Cap input to keep NER fast; name is always near the top,
@@ -480,8 +520,8 @@ class ResumeParser:
             # is the one closest to the top of the resume — the applicant.
             full_name = next((person for person in persons if 1 < len(person.split()) < 5), None)
 
-        if not full_name:
-            full_name = self._guess_name(text)
+        guessed_name = self._guess_name(text)
+        full_name = self._select_best_full_name(full_name, guessed_name)
 
         normalized_organizations = normalize_list_text(organizations)
         normalized_locations = normalize_list_text(normalize_location_text(location) for location in locations)
