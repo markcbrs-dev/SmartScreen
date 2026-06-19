@@ -3,7 +3,7 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import skipUnless
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase
 from docx import Document
@@ -297,6 +297,63 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertEqual(profile.full_name, 'Jane Applicant')
         self.assertEqual(profile.email, 'jane@example.com')
         self.assertEqual(profile.phone, '+63 912 345 6789')
+
+    def test_parse_uses_gemini_enrichment_when_core_fields_are_missing(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+        gemini_client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=Mock(return_value=SimpleNamespace(text='''
+                    {
+                        "full_name": "Jane Applicant",
+                        "email": "jane@example.com",
+                        "phone": "09123456789",
+                        "skills": ["Python", "Django"],
+                        "education": ["Example University"],
+                        "experience": ["Software Engineer at Example Corp"],
+                        "organizations": ["Example Corp"],
+                        "locations": ["Manila"]
+                    }
+                ''')),
+            ),
+        )
+
+        with patch.object(parser, 'extract_text', return_value='Professional Summary\nMotivated applicant'):
+            with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                    with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
+                        profile = parser.parse(resume_file, filename='resume.docx')
+
+        gemini_client.models.generate_content.assert_called_once()
+        self.assertEqual(profile.full_name, 'Jane Applicant')
+        self.assertEqual(profile.email, 'jane@example.com')
+        self.assertEqual(profile.phone, '+63 912 345 6789')
+        self.assertEqual(profile.skills, ['Python', 'Django'])
+        self.assertEqual(profile.education, ['Example University'])
+        self.assertEqual(profile.experience, ['Software Engineer at Example Corp'])
+        self.assertEqual(profile.organizations, ['Example Corp'])
+        self.assertEqual(profile.locations, ['Manila'])
+
+    def test_parse_skips_gemini_when_core_fields_are_already_present(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+        gemini_client = SimpleNamespace(models=SimpleNamespace(generate_content=Mock()))
+
+        with patch.object(
+            parser,
+            'extract_text',
+            return_value='Jane Applicant\njane@example.com\n09123456789\nPython Developer',
+        ):
+            with patch.object(parser, 'extract_entities', return_value=(['Example Corp'], ['Manila'], 'Jane Applicant')):
+                with patch.object(parser, 'extract_skills', return_value=['Python']):
+                    with patch.object(parser, 'extract_education', return_value=['Example University']):
+                        with patch.object(parser, 'extract_experience', return_value=['Software Engineer']):
+                            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                                with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
+                                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        gemini_client.models.generate_content.assert_not_called()
+        self.assertEqual(profile.full_name, 'Jane Applicant')
 
     def test_extract_phone_normalizes_supported_philippine_mobile_formats(self):
         parser = ResumeParser()

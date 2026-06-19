@@ -16,6 +16,8 @@ EXTRACTION PIPELINE
   6. extract_experience()— keyword-line heuristic (looks for engineer, manager, etc.)
   7. extract_entities()  — spaCy NER (ORG, GPE, PERSON) if SMARTSCREEN_ENABLE_SPACY=1
                            Falls back to _guess_name() from the first 8 lines.
+    8. _parse_with_gemini()— optional Gemini enrichment if SMARTSCREEN_ENABLE_GEMINI=1
+                                                     and core fields are still missing after local parsing.
 
 HOW TO MODIFY
 -------------
@@ -24,6 +26,7 @@ HOW TO MODIFY
   Change education keywords → edit the `keywords` list in extract_education()
   Change experience keywords→ edit the `keywords` list in extract_experience()
   Enable spaCy NER        → set env var SMARTSCREEN_ENABLE_SPACY=1 and install en_core_web_sm
+    Enable Gemini fallback  → set SMARTSCREEN_ENABLE_GEMINI=1 and GEMINI_API_KEY
   Change NLP model        → pass nlp_model='...' to ResumeParser() in recruitment.py
     Change PDF extraction   → edit _extract_text_from_pdf() (primary: PyMuPDF, fallbacks: pdfplumber, PyPDF2)
   Change DOCX extraction  → edit _extract_text_from_docx()
@@ -38,6 +41,7 @@ DEBUG
 """
 
 import importlib
+import json
 import logging
 import os
 import re
@@ -76,6 +80,11 @@ except ImportError:
     Document = None
 
 try:
+    from google import genai
+except ImportError:
+    genai = None
+
+try:
     spacy = importlib.import_module('spacy')
 except ImportError:
     spacy = None
@@ -87,6 +96,8 @@ except ImportError:
 
 
 ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+ENABLE_GEMINI = os.environ.get('SMARTSCREEN_ENABLE_GEMINI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+DEFAULT_GEMINI_MODEL = os.environ.get('SMARTSCREEN_GEMINI_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash'
 
 
 class ResumeParser:
@@ -99,10 +110,13 @@ class ResumeParser:
         'server', 'service', 'cloud',
     })
 
-    def __init__(self, nlp_model: str = 'en_core_web_sm'):
+    def __init__(self, nlp_model: str = 'en_core_web_sm', gemini_model: Optional[str] = None):
         self._nlp = None               # Lazy-loaded spaCy model; only loaded when ENABLE_SPACY=1
         self._nlp_load_failed = False  # Flag to avoid retrying a failed load on every call
         self._nlp_model = nlp_model    # Change the NER model by passing a different name here
+        self._gemini_client = None
+        self._gemini_load_failed = False
+        self._gemini_model = (gemini_model or DEFAULT_GEMINI_MODEL).strip() or 'gemini-2.5-flash'
         self.common_skills = self._load_common_skills()  # Modify _load_common_skills() to add/remove skill keywords
         # Lowercase set of all canonical skill names used to reject skill phrases
         # that appear at the top of a resume and could be misread as a person's name.
@@ -136,6 +150,11 @@ class ResumeParser:
                 profile.full_name = filename_name
         if not profile.full_name:
             profile.full_name = filename_name
+        if self._should_use_gemini(profile):
+            self._merge_gemini_profile(
+                profile,
+                self._parse_with_gemini(raw_text, filename=filename),
+            )
         return profile
 
     def _should_use_resume_parser_pro(
@@ -258,6 +277,158 @@ class ResumeParser:
             if hasattr(file_obj, 'seek'):
                 file_obj.seek(0)
 
+    def _should_use_gemini(self, profile: ResumeProfile) -> bool:
+        if not profile.raw_text.strip():
+            return False
+        if self._get_gemini_client() is None:
+            return False
+        return any((
+            not profile.full_name,
+            not profile.email,
+            not profile.phone,
+            not profile.skills,
+            not profile.education,
+            not profile.experience,
+        ))
+
+    def _get_gemini_client(self):
+        if self._gemini_client is not None:
+            return self._gemini_client
+        if self._gemini_load_failed or genai is None or not ENABLE_GEMINI:
+            return None
+
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        if not api_key:
+            logger.info('Gemini enrichment is enabled but GEMINI_API_KEY is not set; skipping Gemini parsing.')
+            self._gemini_load_failed = True
+            return None
+
+        try:
+            self._gemini_client = genai.Client(api_key=api_key)
+        except Exception:
+            logger.exception('Could not initialize the Gemini client; skipping Gemini parsing.')
+            self._gemini_load_failed = True
+            return None
+        return self._gemini_client
+
+    def _parse_with_gemini(self, text: str, filename: Optional[str] = None) -> dict[str, object]:
+        client = self._get_gemini_client()
+        if client is None:
+            return {}
+
+        try:
+            response = client.models.generate_content(
+                model=self._gemini_model,
+                contents=self._build_gemini_prompt(text, filename=filename),
+            )
+        except Exception:
+            logger.exception('Gemini failed to enrich the resume profile.')
+            return {}
+
+        return self._parse_gemini_response(getattr(response, 'text', '') or '')
+
+    def _build_gemini_prompt(self, text: str, filename: Optional[str] = None) -> str:
+        prompt_lines = [
+            'Extract structured resume data from the resume text below.',
+            'Return JSON only. Do not include markdown or commentary.',
+            'Use this exact schema:',
+            '{',
+            '  "full_name": string | null,',
+            '  "email": string | null,',
+            '  "phone": string | null,',
+            '  "skills": string[],',
+            '  "education": string[],',
+            '  "experience": string[],',
+            '  "organizations": string[],',
+            '  "locations": string[]',
+            '}',
+            'Rules:',
+            '- Use null for missing scalar values and [] for missing arrays.',
+            '- full_name must be the applicant name, not a role title, degree, or skill phrase.',
+            '- Keep skills concise.',
+            '- Keep education and experience as short resume line items.',
+            '- Extract only information present in the text.',
+        ]
+        if filename:
+            prompt_lines.append(f'Filename: {filename}')
+        prompt_lines.extend([
+            'Resume text:',
+            text[:20000],
+        ])
+        return '\n'.join(prompt_lines)
+
+    def _parse_gemini_response(self, response_text: str) -> dict[str, object]:
+        if not response_text.strip():
+            return {}
+
+        candidate = response_text.strip()
+        if candidate.startswith('```'):
+            candidate = re.sub(r'^```(?:json)?\s*', '', candidate, flags=re.IGNORECASE)
+            candidate = re.sub(r'\s*```$', '', candidate)
+
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', candidate, re.DOTALL)
+            if not match:
+                logger.warning('Gemini response did not contain valid JSON.')
+                return {}
+            try:
+                parsed = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                logger.warning('Gemini response JSON could not be decoded.')
+                return {}
+
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _merge_gemini_profile(self, profile: ResumeProfile, gemini_data: dict[str, object]) -> None:
+        if not gemini_data:
+            return
+
+        profile.full_name = self._select_best_full_name(
+            self._first_resume_parser_pro_value(gemini_data.get('full_name')),
+            profile.full_name,
+        )
+
+        if not profile.email:
+            email_candidate = self._first_resume_parser_pro_value(gemini_data.get('email'))
+            profile.email = self.extract_email(email_candidate or '') or email_candidate
+
+        if not profile.phone:
+            phone_candidate = self._first_resume_parser_pro_value(gemini_data.get('phone'))
+            extracted_phone = self.extract_phone(phone_candidate or '')
+            profile.phone = extracted_phone or self._normalize_phone_number(phone_candidate)
+
+        profile.skills = self._merge_unique_items(
+            profile.skills,
+            self._extract_skills_from_gemini(gemini_data.get('skills')),
+        )
+        profile.education = normalize_education_entries(
+            self._merge_unique_items(
+                profile.education,
+                self._coerce_text_list(gemini_data.get('education')),
+            )
+        )
+        profile.experience = normalize_list_text(
+            self._merge_unique_items(
+                profile.experience,
+                self._coerce_text_list(gemini_data.get('experience')),
+            )
+        )
+        profile.organizations = normalize_list_text(
+            self._merge_unique_items(
+                profile.organizations,
+                self._coerce_text_list(gemini_data.get('organizations')),
+            )
+        )
+        profile.locations = normalize_list_text(
+            normalize_location_text(location)
+            for location in self._merge_unique_items(
+                profile.locations,
+                self._coerce_text_list(gemini_data.get('locations')),
+            )
+        )
+
     def _write_temp_resume_file(self, file_obj, extension: str) -> Optional[str]:
         if not hasattr(file_obj, 'read'):
             return None
@@ -289,6 +460,42 @@ class ResumeParser:
                     return item.strip()
 
         return None
+
+    def _coerce_text_list(self, value: object, split_pattern: str = r'[\r\n]+') -> list[str]:
+        items = []
+        if isinstance(value, str):
+            items = re.split(split_pattern, value)
+        elif isinstance(value, (list, tuple, set)):
+            for item in value:
+                if isinstance(item, str):
+                    items.extend(re.split(split_pattern, item))
+                elif item is not None:
+                    items.append(str(item))
+
+        return normalize_list_text(item.strip() for item in items if str(item).strip())
+
+    def _extract_skills_from_gemini(self, value: object) -> list[str]:
+        text = '\n'.join(self._coerce_text_list(value, split_pattern=r'[\r\n,;]+'))
+        if not text:
+            return []
+        return self._filter_ambiguous_full_text_skills(
+            text,
+            self._filter_education_domain_skills(text, extract_canonical_skills(text)),
+        )
+
+    def _merge_unique_items(self, existing_items: list[str], new_items: list[str]) -> list[str]:
+        merged = []
+        seen = set()
+        for item in [*existing_items, *new_items]:
+            cleaned = ' '.join(str(item).split()).strip()
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(cleaned)
+        return merged
 
     def _looks_like_skill_not_name(self, candidate: str) -> bool:
         """Return True when *candidate* is almost certainly a skill name or tech phrase,
