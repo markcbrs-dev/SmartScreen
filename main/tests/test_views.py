@@ -1136,6 +1136,10 @@ class ResumeAccessTests(TestCase):
 				'overall_score': 78,
 				'matching_skills': ['Python'],
 				'missing_skills': ['Django'],
+				'recommendations': [
+					{'job_id': 1, 'job_title': 'Backend Developer', 'overall_score': 78},
+					{'job_id': 2, 'job_title': 'API Engineer', 'overall_score': 72},
+				],
 				'breakdown': {
 					'skill_score': 65,
 					'experience_score': 80,
@@ -1181,6 +1185,9 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, 'Django')
 		self.assertContains(response, '78%')
 		self.assertContains(response, 'REST API')
+		self.assertContains(response, 'Backend Developer')
+		self.assertContains(response, 'API Engineer')
+		self.assertContains(response, '72%')
 
 	def test_applicant_resume_preview_requires_staff_login(self):
 		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))

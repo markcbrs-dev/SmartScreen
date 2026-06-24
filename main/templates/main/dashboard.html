@@ -203,10 +203,6 @@
                     <div class="db-applicant-cell">
                       <div>
                         <div class="db-applicant-name">{{ a.get_full_name }}</div>
-                        <div class="db-applicant-email">{{ a.email }}</div>
-                        {% if a.parsed_skills %}
-                          <div class="db-applicant-meta">Skills: {{ a.parsed_skills|slice:":4"|join:", " }}</div>
-                        {% endif %}
                       </div>
                     </div>
                   </td>

@@ -1,6 +1,21 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Applicant Detail - SmartScreen{% endblock %}
+
+{% block body_attrs %} class="db-body"{% endblock %}
+
+{% block navbar %}
+<nav class="db-topnav">
+  <div class="db-topnav-inner">
+    <div class="d-flex align-items-center gap-3">
+      <img src="{% static 'img/smartscreen-logo.png' %}" alt="SmartScreen logo" class="db-brand-logo">
+      <div class="db-brand-text">SMARTSCREEN</div>
+      <div class="db-brand-subtitle">Applicant Detail</div>
+    </div>
+  </div>
+</nav>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
@@ -102,11 +117,14 @@
 
         <div class="mb-4">
           <h3 class="h6">Recommendation</h3>
-          {% if recommendation.job_title %}
-            <p class="mb-1">Better fit found: <strong>{{ recommendation.job_title }}</strong></p>
-            <p class="text-muted mb-0">Recommended score: {{ recommendation.overall_score }}%</p>
+          {% if recommendations %}
+            <ul class="mb-0 ps-3">
+              {% for item in recommendations %}
+                <li><strong>{{ item.job_title }}</strong> - {{ item.overall_score }}%</li>
+              {% endfor %}
+            </ul>
           {% else %}
-            <p class="text-muted mb-0">This applicant currently fits their applied role best among the uploaded job descriptions.</p>
+            <p class="text-muted mb-0">No Recommendations available.</p>
           {% endif %}
         </div>
 
@@ -119,7 +137,7 @@
               {% endfor %}
             </div>
           {% else %}
-            <p class="text-muted mb-0">No matched skills were saved for this applicant.</p>
+            <p class="text-muted mb-0">No Matched Skills.</p>
           {% endif %}
         </div>
 
@@ -132,7 +150,7 @@
               {% endfor %}
             </div>
           {% else %}
-            <p class="text-muted mb-0">No missing skills were flagged for this applicant.</p>
+            <p class="text-muted mb-0">No Missing Skills.</p>
           {% endif %}
         </div>
       </div>

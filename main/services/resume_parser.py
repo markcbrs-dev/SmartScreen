@@ -109,6 +109,10 @@ class ResumeParser:
         'technologies', 'scripting', 'stack', 'interface', 'database',
         'server', 'service', 'cloud',
     })
+    _SURNAME_PREFIXES: frozenset[str] = frozenset({
+        'da', 'de', 'del', 'dela', 'de la', 'de los', 'dela', 'di', 'dos', 'du',
+        'la', 'las', 'los', 'mac', 'mc', 'san', 'santa', 'st', 'st.', 'van', 'vander', 'von',
+    })
 
     def __init__(self, nlp_model: str = 'en_core_web_sm', gemini_model: Optional[str] = None):
         self._nlp = None               # Lazy-loaded spaCy model; only loaded when ENABLE_SPACY=1
@@ -140,9 +144,15 @@ class ResumeParser:
                 profile.phone = self._normalize_phone_number(
                     self._first_resume_parser_pro_value(pro_data.get('phone_number'))
                 )
+        gemini_data = {}
+        if self._should_use_gemini_name_extraction(raw_text):
+            gemini_data = self._parse_with_gemini(raw_text, filename=filename)
         profile.full_name = self._select_best_full_name(
-            self._first_resume_parser_pro_value(pro_data.get('name')),
-            fallback_name,
+            self._first_resume_parser_pro_value(gemini_data.get('full_name')),
+            self._select_best_full_name(
+                self._first_resume_parser_pro_value(pro_data.get('name')),
+                fallback_name,
+            ),
         )
         filename_name = self._extract_name_from_filename(filename or getattr(file_obj, 'name', None))
         if not raw_text.strip() and filename_name:
@@ -150,7 +160,9 @@ class ResumeParser:
                 profile.full_name = filename_name
         if not profile.full_name:
             profile.full_name = filename_name
-        if self._should_use_gemini(profile):
+        if gemini_data:
+            self._merge_gemini_profile(profile, gemini_data)
+        elif self._should_use_gemini(profile):
             self._merge_gemini_profile(
                 profile,
                 self._parse_with_gemini(raw_text, filename=filename),
@@ -290,6 +302,11 @@ class ResumeParser:
             not profile.education,
             not profile.experience,
         ))
+
+    def _should_use_gemini_name_extraction(self, text: str) -> bool:
+        if not text.strip():
+            return False
+        return self._get_gemini_client() is not None
 
     def _get_gemini_client(self):
         if self._gemini_client is not None:
@@ -567,10 +584,33 @@ class ResumeParser:
         if len(parts) == 2:
             return parts[0], '', parts[1]
 
-        middle_parts = parts[1:-1]
-        middle_initial_parts = [part for part in middle_parts if self._is_middle_initial(part)]
-        middle_name = ' '.join(middle_initial_parts or middle_parts)
-        return parts[0], middle_name, parts[-1]
+        middle_initial_index = next((index for index, part in enumerate(parts[1:], start=1) if self._is_middle_initial(part)), None)
+        if middle_initial_index is not None:
+            middle_end_index = middle_initial_index
+            while middle_end_index < len(parts) and self._is_middle_initial(parts[middle_end_index]):
+                middle_end_index += 1
+
+            first_name = ' '.join(parts[:middle_initial_index]).strip()
+            middle_name = ' '.join(parts[middle_initial_index:middle_end_index]).strip()
+            last_name = ' '.join(parts[middle_end_index:]).strip()
+            return first_name, middle_name, last_name
+
+        last_name_start = self._find_last_name_start_index(parts)
+        first_name = ' '.join(parts[:last_name_start]).strip()
+        last_name = ' '.join(parts[last_name_start:]).strip()
+        return first_name, '', last_name
+
+    def _find_last_name_start_index(self, parts: list[str]) -> int:
+        if len(parts) <= 2:
+            return max(len(parts) - 1, 0)
+
+        start_index = len(parts) - 1
+        while start_index - 1 >= 1:
+            candidate = re.sub(r'[^A-Za-z]', '', parts[start_index - 1]).lower()
+            if candidate not in self._SURNAME_PREFIXES:
+                break
+            start_index -= 1
+        return start_index
 
     def _is_middle_initial(self, value: str) -> bool:
         compact = re.sub(r'[^A-Za-z.]', '', value or '')

@@ -524,6 +524,26 @@ def _serialize_job_recommendation(job, result) -> dict:
     }
 
 
+def _serialize_qualified_job_recommendations(scored_jobs) -> list[dict]:
+    if not scored_jobs:
+        return []
+
+    qualified_jobs = []
+    for job, result in scored_jobs:
+        if job is None or result is None:
+            continue
+        overall_score = round(result.overall_score * 100)
+        if overall_score < INTERVIEW_MATCH_SCORE_THRESHOLD:
+            continue
+        qualified_jobs.append({
+            'job_id': job.id,
+            'job_title': job.title,
+            'overall_score': overall_score,
+        })
+
+    return sorted(qualified_jobs, key=lambda item: (-item['overall_score'], item['job_title'].lower()))
+
+
 def score_resume_against_jobs(resume_profile: ResumeProfile, jobs) -> list[tuple[JobDescription, object]]:
     matcher = get_matcher()
     return [
@@ -578,6 +598,7 @@ def serialize_match_result(result, *, matched_job=None, recommendation_job=None,
     if recommendation:
         payload['recommendation'] = recommendation
     if scored_jobs is not None:
+        payload['recommendations'] = _serialize_qualified_job_recommendations(scored_jobs)
         payload['scored_job_ids'] = [job.id for job, _ in scored_jobs]
         payload['scored_job_count'] = len(scored_jobs)
     return payload

@@ -47,6 +47,7 @@ DEBUG
 """
 
 import importlib
+import json
 import logging
 import os
 import re
@@ -78,8 +79,15 @@ try:
 except ImportError:
     spacy = None
 
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 
 ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+ENABLE_GEMINI = os.environ.get('SMARTSCREEN_ENABLE_GEMINI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+DEFAULT_GEMINI_MODEL = os.environ.get('SMARTSCREEN_GEMINI_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash'
 
 
 class JobDescriptionParser:
@@ -91,6 +99,9 @@ class JobDescriptionParser:
         self._nlp = None               # Lazy-loaded spaCy model; loaded only when ENABLE_SPACY=1
         self._nlp_load_failed = False  # Flag to avoid retrying a failed model load on every call
         self._nlp_model = nlp_model    # Change the NER model name by passing a different value here
+        self._gemini_client = None
+        self._gemini_load_failed = False
+        self._gemini_model = DEFAULT_GEMINI_MODEL
         self.tech_skills = self._load_tech_skills()           # Modify _load_tech_skills() to add/remove tech skill keywords
         self.soft_skills = self._load_soft_skills()           # Modify _load_soft_skills() to add/remove soft skill keywords
         self.employment_types = self._load_employment_types() # Modify _load_employment_types() to recognise new contract types
@@ -113,7 +124,7 @@ class JobDescriptionParser:
     def _parse_single_text(self, raw_text: str, filename: Optional[str] = None) -> JobProfile:
         required_skills, preferred_skills = self.extract_skills(raw_text)
         title = self.extract_job_title(raw_text, filename=filename)
-        return JobProfile(
+        profile = JobProfile(
             title=normalize_title_text(title) if title else None,
             reporting_to=self.extract_reporting_to(raw_text),
             company=self.extract_company(raw_text),
@@ -132,6 +143,10 @@ class JobDescriptionParser:
             industries=self.extract_industries(raw_text),
             raw_text=raw_text,
         )
+        gemini_data = self._parse_with_gemini(raw_text, filename=filename) if self._should_use_gemini(raw_text) else {}
+        if gemini_data:
+            self._merge_gemini_profile(profile, gemini_data)
+        return profile
 
     def extract_text(self, file_obj, filename: Optional[str] = None) -> str:
         ext = os.path.splitext(filename or getattr(file_obj, 'name', ''))[1].lower()
@@ -403,6 +418,174 @@ class JobDescriptionParser:
             self._nlp_load_failed = True
             return None
         return self._nlp
+
+    def _should_use_gemini(self, text: str) -> bool:
+        if not text.strip():
+            return False
+        return self._get_gemini_client() is not None
+
+    def _get_gemini_client(self):
+        if self._gemini_client is not None:
+            return self._gemini_client
+        if self._gemini_load_failed or genai is None or not ENABLE_GEMINI:
+            return None
+
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        if not api_key:
+            logger.info('Gemini job parsing is enabled but GEMINI_API_KEY is not set; skipping Gemini parsing.')
+            self._gemini_load_failed = True
+            return None
+
+        try:
+            self._gemini_client = genai.Client(api_key=api_key)
+        except Exception:
+            logger.exception('Could not initialize the Gemini client for job parsing; skipping Gemini parsing.')
+            self._gemini_load_failed = True
+            return None
+        return self._gemini_client
+
+    def _parse_with_gemini(self, text: str, filename: Optional[str] = None) -> dict[str, object]:
+        client = self._get_gemini_client()
+        if client is None:
+            return {}
+
+        try:
+            response = client.models.generate_content(
+                model=self._gemini_model,
+                contents=self._build_gemini_prompt(text, filename=filename),
+            )
+        except Exception:
+            logger.exception('Gemini failed to enrich the job profile.')
+            return {}
+
+        return self._parse_gemini_response(getattr(response, 'text', '') or '')
+
+    def _build_gemini_prompt(self, text: str, filename: Optional[str] = None) -> str:
+        prompt_lines = [
+            'Extract structured job description data from the text below.',
+            'Return JSON only. Do not include markdown or commentary.',
+            'Use this exact schema:',
+            '{',
+            '  "title": string | null,',
+            '  "reporting_to": string | null,',
+            '  "company": string | null,',
+            '  "location": string | null,',
+            '  "employment_type": string | null,',
+            '  "experience_level": string | null,',
+            '  "salary_range": string | null,',
+            '  "remote_option": boolean | null,',
+            '  "required_skills": string[],',
+            '  "preferred_skills": string[],',
+            '  "responsibilities": string[],',
+            '  "qualifications": string[],',
+            '  "education_requirements": string[],',
+            '  "certifications": string[],',
+            '  "benefits": string[],',
+            '  "industries": string[]',
+            '}',
+            'Rules:',
+            '- Use null for missing scalar values and [] for missing arrays.',
+            '- Keep lists concise and based only on text that appears in the job description.',
+            '- Separate required skills from preferred skills whenever the text implies that distinction.',
+        ]
+        if filename:
+            prompt_lines.append(f'Filename: {filename}')
+        prompt_lines.extend(['Job description text:', text[:20000]])
+        return '\n'.join(prompt_lines)
+
+    def _parse_gemini_response(self, response_text: str) -> dict[str, object]:
+        if not response_text.strip():
+            return {}
+
+        candidate = response_text.strip()
+        if candidate.startswith('```'):
+            candidate = re.sub(r'^```(?:json)?\s*', '', candidate, flags=re.IGNORECASE)
+            candidate = re.sub(r'\s*```$', '', candidate)
+
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', candidate, re.DOTALL)
+            if not match:
+                logger.warning('Gemini job parser response did not contain valid JSON.')
+                return {}
+            try:
+                parsed = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                logger.warning('Gemini job parser response JSON could not be decoded.')
+                return {}
+
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _merge_gemini_profile(self, profile: JobProfile, gemini_data: dict[str, object]) -> None:
+        if not gemini_data:
+            return
+
+        profile.title = normalize_title_text(self._first_text_value(gemini_data.get('title')) or profile.title) if (self._first_text_value(gemini_data.get('title')) or profile.title) else None
+        profile.reporting_to = self._first_text_value(gemini_data.get('reporting_to')) or profile.reporting_to
+        profile.company = self._first_text_value(gemini_data.get('company')) or profile.company
+        profile.location = normalize_location_text(self._first_text_value(gemini_data.get('location')) or profile.location or '') or profile.location
+        employment_type = self._first_text_value(gemini_data.get('employment_type'))
+        if employment_type:
+            profile.employment_type = normalize_employment_type(employment_type) or profile.employment_type
+        experience_level = self._first_text_value(gemini_data.get('experience_level'))
+        if experience_level:
+            profile.experience_level = normalize_experience_level(experience_level) or profile.experience_level
+        profile.salary_range = self._first_text_value(gemini_data.get('salary_range')) or profile.salary_range
+
+        remote_option = gemini_data.get('remote_option')
+        if isinstance(remote_option, bool):
+            profile.remote_option = profile.remote_option or remote_option
+
+        profile.required_skills = normalize_list_text(self._merge_unique_items(profile.required_skills, extract_canonical_skills(' '.join(self._coerce_text_list(gemini_data.get('required_skills'))))))
+        profile.preferred_skills = [
+            skill for skill in normalize_list_text(self._merge_unique_items(profile.preferred_skills, extract_canonical_skills(' '.join(self._coerce_text_list(gemini_data.get('preferred_skills'))))))
+            if skill not in profile.required_skills
+        ]
+        profile.responsibilities = self._merge_unique_items(profile.responsibilities, self._coerce_text_list(gemini_data.get('responsibilities')))
+        profile.qualifications = self._merge_unique_items(profile.qualifications, self._coerce_text_list(gemini_data.get('qualifications')))
+        profile.education_requirements = normalize_education_entries(self._merge_unique_items(profile.education_requirements, self._coerce_text_list(gemini_data.get('education_requirements'))))
+        profile.certifications = normalize_list_text(self._merge_unique_items(profile.certifications, self._coerce_text_list(gemini_data.get('certifications'))))
+        profile.benefits = self._merge_unique_items(profile.benefits, self._coerce_text_list(gemini_data.get('benefits')))
+        profile.industries = normalize_list_text(self._merge_unique_items(profile.industries, self._coerce_text_list(gemini_data.get('industries'))))
+
+    def _first_text_value(self, value) -> Optional[str]:
+        if isinstance(value, str):
+            cleaned = normalize_whitespace(value)
+            return cleaned or None
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    cleaned = normalize_whitespace(item)
+                    if cleaned:
+                        return cleaned
+        return None
+
+    def _coerce_text_list(self, value) -> list[str]:
+        if isinstance(value, str):
+            cleaned = normalize_whitespace(value)
+            return [cleaned] if cleaned else []
+        if not isinstance(value, list):
+            return []
+        items = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            cleaned = normalize_whitespace(item)
+            if cleaned:
+                items.append(cleaned)
+        return items
+
+    def _merge_unique_items(self, base_items: list[str], extra_items: list[str]) -> list[str]:
+        merged = []
+        seen = set()
+        for item in list(base_items or []) + list(extra_items or []):
+            key = normalize_whitespace(item).lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(normalize_whitespace(item))
+        return merged
 
     def extract_employment_type(self, text: str) -> Optional[str]:
         text_lower = text.lower()

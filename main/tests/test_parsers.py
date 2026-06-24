@@ -128,6 +128,24 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertEqual(middle_name, 'R.')
         self.assertEqual(last_name, 'Saysay')
 
+    def test_split_name_components_keeps_multiple_given_names_before_middle_initial(self):
+        parser = ResumeParser()
+
+        first_name, middle_name, last_name = parser.split_name_components('Juan Carlo M. Dela Cruz')
+
+        self.assertEqual(first_name, 'Juan Carlo')
+        self.assertEqual(middle_name, 'M.')
+        self.assertEqual(last_name, 'Dela Cruz')
+
+    def test_split_name_components_keeps_multiple_given_names_when_no_middle_initial_exists(self):
+        parser = ResumeParser()
+
+        first_name, middle_name, last_name = parser.split_name_components('Maria Clara Dela Cruz')
+
+        self.assertEqual(first_name, 'Maria Clara')
+        self.assertEqual(middle_name, '')
+        self.assertEqual(last_name, 'Dela Cruz')
+
     def test_guess_name_accepts_name_label_prefix(self):
         parser = ResumeParser()
 
@@ -363,10 +381,25 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertEqual(profile.organizations, ['Example Corp'])
         self.assertEqual(profile.locations, ['Manila'])
 
-    def test_parse_skips_gemini_when_core_fields_are_already_present(self):
+    def test_parse_prefers_gemini_for_full_name_when_available(self):
         parser = ResumeParser()
         resume_file = SimpleNamespace(name='resume.docx')
-        gemini_client = SimpleNamespace(models=SimpleNamespace(generate_content=Mock()))
+        gemini_client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=Mock(return_value=SimpleNamespace(text='''
+                    {
+                        "full_name": "Jane Q. Applicant",
+                        "email": null,
+                        "phone": null,
+                        "skills": [],
+                        "education": [],
+                        "experience": [],
+                        "organizations": [],
+                        "locations": []
+                    }
+                ''')),
+            ),
+        )
 
         with patch.object(
             parser,
@@ -381,8 +414,43 @@ class ResumeParserExtractionTests(SimpleTestCase):
                                 with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
                                     profile = parser.parse(resume_file, filename='resume.docx')
 
-        gemini_client.models.generate_content.assert_not_called()
-        self.assertEqual(profile.full_name, 'Jane Applicant')
+        gemini_client.models.generate_content.assert_called_once()
+        self.assertEqual(profile.full_name, 'Jane Q. Applicant')
+
+    def test_parse_uses_gemini_to_enrich_resume_entities_even_when_local_fields_exist(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+        gemini_client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=Mock(return_value=SimpleNamespace(text='''
+                    {
+                        "full_name": "Jane Q. Applicant",
+                        "email": null,
+                        "phone": null,
+                        "skills": ["Python", "Django"],
+                        "education": ["Example University"],
+                        "experience": ["Software Engineer at Example Corp"],
+                        "organizations": ["Example Corp"],
+                        "locations": ["Manila"]
+                    }
+                ''')),
+            ),
+        )
+
+        with patch.object(parser, 'extract_text', return_value='Jane Applicant\njane@example.com\n09123456789\nPython Developer'):
+            with patch.object(parser, 'extract_entities', return_value=(['Local Corp'], ['Quezon City'], 'Jane Applicant')):
+                with patch.object(parser, 'extract_skills', return_value=['Python']):
+                    with patch.object(parser, 'extract_education', return_value=['Local University']):
+                        with patch.object(parser, 'extract_experience', return_value=['Junior Developer']):
+                            with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                                with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
+                                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        self.assertEqual(profile.skills, ['Python', 'Django'])
+        self.assertEqual(profile.education, ['Local University', 'Example University'])
+        self.assertEqual(profile.experience, ['Junior Developer', 'Software Engineer at Example Corp'])
+        self.assertEqual(profile.organizations, ['Local Corp', 'Example Corp'])
+        self.assertEqual(profile.locations, ['Quezon City', 'Manila'])
 
     def test_extract_phone_normalizes_supported_philippine_mobile_formats(self):
         parser = ResumeParser()
@@ -619,6 +687,55 @@ class JobDescriptionParserNerTests(SimpleTestCase):
 
 
 class JobDescriptionParserExtractionTests(SimpleTestCase):
+    def test_parse_uses_gemini_to_enrich_job_entities(self):
+        parser = JobDescriptionParser()
+        gemini_client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=Mock(return_value=SimpleNamespace(text='''
+                    {
+                        "title": "Backend Engineer",
+                        "reporting_to": "Engineering Manager",
+                        "company": "Example Corp",
+                        "location": "Manila",
+                        "employment_type": "Full-Time",
+                        "experience_level": "senior",
+                        "salary_range": "$5000-$7000",
+                        "remote_option": true,
+                        "required_skills": ["Python", "Django"],
+                        "preferred_skills": ["Docker"],
+                        "responsibilities": ["Build APIs"],
+                        "qualifications": ["Bachelor's degree"],
+                        "education_requirements": ["Bachelor of Science in Computer Science"],
+                        "certifications": ["AWS Certified"],
+                        "benefits": ["Health insurance"],
+                        "industries": ["Technology"]
+                    }
+                ''')),
+            ),
+        )
+
+        with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
+            profile = parser.parse_text('Hiring for a backend role supporting our Manila team.', filename='backend-role.txt')
+
+        gemini_client.models.generate_content.assert_called_once()
+        self.assertEqual(profile.title, 'Backend Engineer')
+        self.assertEqual(profile.reporting_to, 'Engineering Manager')
+        self.assertEqual(profile.company, 'Example Corp')
+        self.assertEqual(profile.location, 'Manila')
+        self.assertEqual(profile.employment_type, 'Full-Time')
+        self.assertEqual(profile.experience_level, 'senior')
+        self.assertEqual(profile.salary_range, '$5000-$7000')
+        self.assertTrue(profile.remote_option)
+        self.assertIn('Python', profile.required_skills)
+        self.assertIn('Django', profile.required_skills)
+        self.assertIn('Docker', profile.preferred_skills)
+        self.assertEqual(profile.responsibilities, ['Build APIs'])
+        self.assertEqual(profile.qualifications, ["Bachelor's degree"])
+        self.assertEqual(profile.education_requirements, ['Bachelor Of Science In Computer Science'])
+        self.assertEqual(profile.certifications, ['Aws Certified'])
+        self.assertEqual(profile.benefits, ['Health insurance'])
+        self.assertEqual(profile.industries, ['Technology'])
+
     def test_extract_skills_uses_required_and_preferred_sections_with_aliases(self):
         parser = JobDescriptionParser()
 

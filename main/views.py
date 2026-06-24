@@ -949,6 +949,7 @@ def applicant_detail(request, applicant_id):
         'matching_skills': applicant.match_notes.get('matching_skills', []) if isinstance(applicant.match_notes, dict) else [],
         'missing_skills': applicant.match_notes.get('missing_skills', []) if isinstance(applicant.match_notes, dict) else [],
         'recommendation': applicant.match_notes.get('recommendation', {}) if isinstance(applicant.match_notes, dict) else {},
+        'recommendations': applicant.match_notes.get('recommendations', []) if isinstance(applicant.match_notes, dict) else [],
         'matched_job': applicant.match_notes.get('matched_job', {}) if isinstance(applicant.match_notes, dict) else {},
     }
     return render(request, 'main/applicant_detail.html', context)
