@@ -60,6 +60,9 @@ from .matcher import ResumeJobMatcher
 from .resume_parser import ResumeParser
 
 
+INTERVIEW_MATCH_SCORE_THRESHOLD = 70
+
+
 # -----------------------------------------------------------------------
 # SINGLETON PARSERS & MATCHER
 # These are instantiated once per process via lru_cache.
@@ -456,6 +459,7 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     applicant.applied_job = target_job
     applicant.position = target_job.title
     applicant.match_score = round(target_match_result.overall_score * 100)  # Store as 0–100 integer
+    applicant.status = 'INTERVIEW' if applicant.match_score >= INTERVIEW_MATCH_SCORE_THRESHOLD else 'NEW'
     applicant.match_notes = serialize_match_result(
         target_match_result,
         matched_job=target_job,
@@ -466,6 +470,7 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     applicant.save(update_fields=[
         'applied_job',
         'position',
+        'status',
         'match_score',
         'match_notes',
     ])
@@ -481,6 +486,14 @@ def refresh_applicant_matches(applicants, active_job: JobDescription | None):
 
 
 def build_job_profile_from_model(job) -> JobProfile:
+    required_skills = list(job.required_skills or [])
+    preferred_skills = list(job.preferred_skills or [])
+    if job.raw_text:
+        parsed_required_skills, parsed_preferred_skills = get_job_parser().extract_skills(job.raw_text)
+        if parsed_required_skills or parsed_preferred_skills:
+            required_skills = parsed_required_skills
+            preferred_skills = parsed_preferred_skills
+
     return JobProfile(
         title=job.title,
         reporting_to=getattr(job, 'reporting_to', '') or None,
@@ -489,8 +502,8 @@ def build_job_profile_from_model(job) -> JobProfile:
         employment_type=job.employment_type,
         experience_level=job.experience_level,
         salary_range=job.salary_range,
-        required_skills=list(job.required_skills or []),
-        preferred_skills=list(job.preferred_skills or []),
+        required_skills=required_skills,
+        preferred_skills=preferred_skills,
         responsibilities=list(job.responsibilities or []),
         qualifications=list(job.qualifications or []),
         education_requirements=list(job.education_requirements or []),

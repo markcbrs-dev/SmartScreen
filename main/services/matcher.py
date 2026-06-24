@@ -290,20 +290,21 @@ class ResumeJobMatcher:
         resume_hard, resume_soft = split_skills_by_category(resume_list)
         required_hard, required_soft = split_skills_by_category(required)
         preferred_hard, preferred_soft = split_skills_by_category(preferred)
+        track_preferred_missing = not (required_hard or required_soft)
 
         if job_profile_type == 'non_tech':
             component_specs = [
                 (resume_hard, required_hard, 0.40, True),
-                (resume_hard, preferred_hard, 0.15, False),
+                (resume_hard, preferred_hard, 0.15, track_preferred_missing),
                 (resume_soft, required_soft, 0.30, True),
-                (resume_soft, preferred_soft, 0.15, False),
+                (resume_soft, preferred_soft, 0.15, track_preferred_missing),
             ]
         else:
             component_specs = [
                 (resume_hard, required_hard, 0.70, True),
-                (resume_hard, preferred_hard, 0.15, False),
+                (resume_hard, preferred_hard, 0.15, track_preferred_missing),
                 (resume_soft, required_soft, 0.10, True),
-                (resume_soft, preferred_soft, 0.05, False),
+                (resume_soft, preferred_soft, 0.05, track_preferred_missing),
             ]
 
         total_weight = 0.0

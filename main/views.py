@@ -39,7 +39,7 @@ PRIVATE HELPERS (text rendering — not views)
   _build_dashboard_preview_sections, _get_job_display_text
 """
 
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, render, redirect
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
@@ -49,21 +49,35 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.urls import reverse
 from html import escape
 from collections import defaultdict
+import base64
 import re
+import textwrap
 from .models import Applicant, JobDescription
 import os
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.password_validation import validate_password as _validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
+from django.views.decorators.clickjacking import xframe_options_exempt
 from .services.job_parser import JobDescriptionParser
 from .services.skills import normalize_employment_type
+
+try:
+    import fitz
+except ImportError:
+    fitz = None
+
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
 
 _email_validator = EmailValidator()
 
 # Magic-byte signatures used to verify uploaded file content matches extension.
 _MAGIC_PDF  = b'%PDF'
 _MAGIC_DOCX = b'PK\x03\x04'  # DOCX/XLSX/ZIP share the same PK ZIP header
+_INTERVIEW_MATCH_SCORE_THRESHOLD = 70
 
 _staff_required = user_passes_test(lambda u: u.is_active and u.is_staff, login_url='login')
 _job_description_parser = JobDescriptionParser()
@@ -80,6 +94,7 @@ from .services import (
     get_job_description_by_id,
     get_resume_parser,
     parse_resume_upload,
+    refresh_applicant_match,
     refresh_applicant_matches,
     remove_active_job_description,
     replace_active_job_description,
@@ -111,6 +126,262 @@ def _render_inline_formatting(text: str) -> str:
 
     parts.append(escape(text[last_index:]))
     return ''.join(parts)
+
+
+def _is_docx_list_paragraph(paragraph) -> bool:
+    style_name = getattr(getattr(paragraph, 'style', None), 'name', '') or ''
+    lowered = style_name.lower()
+    if 'list bullet' in lowered or 'bullet' in lowered or 'list number' in lowered or 'number' in lowered:
+        return True
+
+    paragraph_properties = getattr(getattr(paragraph, '_p', None), 'pPr', None)
+    if paragraph_properties is not None and getattr(paragraph_properties, 'numPr', None) is not None:
+        return True
+
+    return False
+
+
+def _render_docx_runs_html(paragraph) -> str:
+    parts: list[str] = []
+    for run in getattr(paragraph, 'runs', []):
+        run_text = run.text or ''
+        if not run_text:
+            continue
+        escaped_text = escape(run_text)
+        if run.bold:
+            escaped_text = f'<strong>{escaped_text}</strong>'
+        if run.italic:
+            escaped_text = f'<em>{escaped_text}</em>'
+        if run.underline:
+            escaped_text = f'<u>{escaped_text}</u>'
+        parts.append(escaped_text)
+
+    if parts:
+        return ''.join(parts).strip()
+    return escape((paragraph.text or '').strip())
+
+
+def _build_docx_preview_blocks(file_obj) -> list[dict[str, object]]:
+    if DocxDocument is None:
+        raise ValueError('DOCX support is not installed. Add python-docx to preview resume uploads.')
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0)
+
+    try:
+        document = DocxDocument(file_obj)
+    except Exception as exc:
+        raise ValueError(f'Could not read the uploaded DOCX: {exc}') from exc
+
+    blocks: list[dict[str, object]] = []
+    list_items: list[str] = []
+
+    def flush_list_items() -> None:
+        nonlocal list_items
+        if list_items:
+            blocks.append({'type': 'list', 'items_html': list_items})
+            list_items = []
+
+    for paragraph in document.paragraphs:
+        raw_text = (paragraph.text or '').strip()
+        if not raw_text:
+            flush_list_items()
+            continue
+
+        paragraph_html = _render_docx_runs_html(paragraph)
+        if not paragraph_html:
+            flush_list_items()
+            continue
+
+        style_name = (getattr(getattr(paragraph, 'style', None), 'name', '') or '').lower()
+        if _is_docx_list_paragraph(paragraph):
+            list_items.append(paragraph_html)
+            continue
+
+        flush_list_items()
+        if style_name.startswith('heading'):
+            blocks.append({'type': 'heading', 'html': paragraph_html})
+        else:
+            blocks.append({'type': 'paragraph', 'html': paragraph_html})
+
+    flush_list_items()
+
+    for table in document.tables:
+        rows = []
+        for row in table.rows:
+            cells = []
+            for cell in row.cells:
+                cell_text = '<br>'.join(
+                    escape(paragraph.text.strip())
+                    for paragraph in cell.paragraphs
+                    if paragraph.text.strip()
+                )
+                cells.append(cell_text)
+            if any(cells):
+                rows.append(cells)
+        if rows:
+            blocks.append({'type': 'table', 'rows': rows})
+
+    return blocks
+
+
+def _strip_preview_html(value: str) -> str:
+    return re.sub(r'<[^>]+>', '', value or '').strip()
+
+
+def _wrap_pdf_preview_text(text: str, max_chars_per_line: int) -> list[str]:
+    wrapped_lines: list[str] = []
+    for raw_line in (text or '').splitlines() or ['']:
+        stripped = raw_line.strip()
+        if not stripped:
+            wrapped_lines.append('')
+            continue
+        wrapped_lines.extend(
+            textwrap.wrap(
+                stripped,
+                width=max_chars_per_line,
+                break_long_words=False,
+                break_on_hyphens=False,
+            ) or ['']
+        )
+    return wrapped_lines or ['']
+
+
+def _draw_pdf_preview_text(page, text: str, *, x: float, y: float, width: float, font_size: float) -> float:
+    plain_text = _strip_preview_html(text)
+    if not plain_text:
+        return y
+
+    max_chars_per_line = max(24, int(width / max(font_size * 0.52, 1)))
+    wrapped_lines = _wrap_pdf_preview_text(plain_text, max_chars_per_line)
+    line_height = font_size * 1.45
+    box_height = max(line_height + 4, len(wrapped_lines) * line_height + 2)
+    rect = fitz.Rect(x, y, x + width, y + box_height)
+    page.insert_textbox(
+        rect,
+        '\n'.join(wrapped_lines),
+        fontsize=font_size,
+        fontname='helv',
+        color=(0.12, 0.16, 0.2),
+        lineheight=1.15,
+    )
+    return y + box_height
+
+
+def _build_docx_preview_pdf_bytes(file_obj) -> bytes:
+    if fitz is None:
+        raise ValueError('PDF preview generation is unavailable because PyMuPDF is not installed.')
+
+    blocks = _build_docx_preview_blocks(file_obj)
+    pages = _paginate_docx_preview_blocks(blocks)
+    if not pages:
+        return b''
+
+    pdf_document = fitz.open()
+    page_width = 595
+    page_height = 842
+    margin_x = 42
+    margin_y = 44
+    content_width = page_width - (margin_x * 2)
+
+    try:
+        for page_blocks in pages:
+            page = pdf_document.new_page(width=page_width, height=page_height)
+            page.draw_rect(page.rect, color=(0.85, 0.89, 0.93), fill=(1, 1, 1), width=1)
+            cursor_y = margin_y
+
+            for block in page_blocks:
+                block_type = block.get('type')
+                if block_type == 'heading':
+                    cursor_y = _draw_pdf_preview_text(
+                        page,
+                        str(block.get('html', '')),
+                        x=margin_x,
+                        y=cursor_y,
+                        width=content_width,
+                        font_size=16,
+                    ) + 8
+                    continue
+
+                if block_type == 'list':
+                    for item in block.get('items_html', []) or []:
+                        cursor_y = _draw_pdf_preview_text(
+                            page,
+                            f'• {_strip_preview_html(str(item))}',
+                            x=margin_x + 8,
+                            y=cursor_y,
+                            width=content_width - 8,
+                            font_size=11.5,
+                        ) + 4
+                    cursor_y += 4
+                    continue
+
+                if block_type == 'table':
+                    for row in block.get('rows', []) or []:
+                        row_text = ' | '.join(_strip_preview_html(str(cell)) for cell in row if str(cell).strip())
+                        cursor_y = _draw_pdf_preview_text(
+                            page,
+                            row_text,
+                            x=margin_x,
+                            y=cursor_y,
+                            width=content_width,
+                            font_size=10.5,
+                        ) + 6
+                    cursor_y += 4
+                    continue
+
+                cursor_y = _draw_pdf_preview_text(
+                    page,
+                    str(block.get('html', '')),
+                    x=margin_x,
+                    y=cursor_y,
+                    width=content_width,
+                    font_size=11.5,
+                ) + 6
+
+        return pdf_document.tobytes()
+    finally:
+        pdf_document.close()
+
+
+def _estimate_docx_preview_block_units(block: dict[str, object]) -> int:
+    block_type = block.get('type')
+    if block_type == 'heading':
+        return 5
+    if block_type == 'list':
+        items = block.get('items_html', []) or []
+        total_text = sum(len(re.sub(r'<[^>]+>', '', item or '')) for item in items)
+        return max(6, len(items) * 3 + total_text // 180)
+    if block_type == 'table':
+        rows = block.get('rows', []) or []
+        return max(8, len(rows) * 4)
+
+    html = block.get('html', '') or ''
+    visible_text = len(re.sub(r'<[^>]+>', '', html))
+    return max(3, visible_text // 160 + 2)
+
+
+def _paginate_docx_preview_blocks(blocks: list[dict[str, object]], page_unit_limit: int = 36) -> list[list[dict[str, object]]]:
+    if not blocks:
+        return []
+
+    pages: list[list[dict[str, object]]] = []
+    current_page: list[dict[str, object]] = []
+    current_units = 0
+
+    for block in blocks:
+        block_units = _estimate_docx_preview_block_units(block)
+        if current_page and current_units + block_units > page_unit_limit:
+            pages.append(current_page)
+            current_page = []
+            current_units = 0
+
+        current_page.append(block)
+        current_units += block_units
+
+    if current_page:
+        pages.append(current_page)
+
+    return pages
 
 
 def _visible_text_length(text: str) -> int:
@@ -268,6 +539,22 @@ def _build_apply_job_details(available_jobs: list[JobDescription]) -> list[dict[
             'description_preview_sections': _build_description_preview_sections(_about),
         })
     return job_details
+
+
+def _build_pdf_preview_images(file_bytes: bytes) -> list[str]:
+    if fitz is None:
+        raise ValueError('PDF preview generation is unavailable because PyMuPDF is not installed.')
+
+    preview_document = fitz.open(stream=file_bytes, filetype='pdf')
+    page_images: list[str] = []
+    zoom_matrix = fitz.Matrix(1.35, 1.35)
+    try:
+        for page in preview_document:
+            pixmap = page.get_pixmap(matrix=zoom_matrix, alpha=False)
+            page_images.append(base64.b64encode(pixmap.tobytes('png')).decode('ascii'))
+    finally:
+        preview_document.close()
+    return page_images
 
 # -----------------------------------------------------------------------
 # AUTH VIEWS
@@ -641,6 +928,72 @@ def audit_log_view(request):
     return render(request, 'main/audit_log.html', {'logs': logs})
 
 
+@_staff_required
+def applicant_detail(request, applicant_id):
+    applicant = get_object_or_404(Applicant.objects.select_related('applied_job'), id=applicant_id)
+    applicant, _ = refresh_applicant_match(applicant, get_active_job_descriptions())
+    applicant.resume_download_url = None
+    applicant.resume_preview_url = None
+    if applicant.resume:
+        applicant.resume_download_url = reverse('serve_resume', args=[os.path.basename(applicant.resume.name)])
+        applicant.resume_preview_url = reverse('applicant_resume_preview', args=[applicant.id])
+
+    resume_name = os.path.basename(applicant.resume.name) if applicant.resume else ''
+    resume_extension = os.path.splitext(resume_name)[1].lower()
+    context = {
+        'applicant': applicant,
+        'resume_name': resume_name,
+        'resume_extension': resume_extension,
+        'resume_is_pdf': resume_extension == '.pdf',
+        'match_breakdown': applicant.match_notes.get('breakdown', {}) if isinstance(applicant.match_notes, dict) else {},
+        'matching_skills': applicant.match_notes.get('matching_skills', []) if isinstance(applicant.match_notes, dict) else [],
+        'missing_skills': applicant.match_notes.get('missing_skills', []) if isinstance(applicant.match_notes, dict) else [],
+        'recommendation': applicant.match_notes.get('recommendation', {}) if isinstance(applicant.match_notes, dict) else {},
+        'matched_job': applicant.match_notes.get('matched_job', {}) if isinstance(applicant.match_notes, dict) else {},
+    }
+    return render(request, 'main/applicant_detail.html', context)
+
+
+@_staff_required
+@xframe_options_exempt
+def applicant_resume_preview(request, applicant_id):
+    applicant = get_object_or_404(Applicant.objects.only('id', 'resume', 'resume_text', 'first_name', 'middle_name', 'last_name'), id=applicant_id)
+    if not applicant.resume:
+        raise Http404
+
+    resume_name = os.path.basename(applicant.resume.name)
+    resume_extension = os.path.splitext(resume_name)[1].lower()
+    resume_source_url = reverse('serve_resume', args=[resume_name])
+    preview_context = {
+        'applicant': applicant,
+        'resume_name': resume_name,
+        'resume_extension': resume_extension,
+        'resume_source_url': resume_source_url,
+        'pdf_page_images': [],
+        'docx_preview_pages': [],
+        'docx_preview_blocks': [],
+        'preview_text': applicant.resume_text or '',
+    }
+
+    if resume_extension == '.pdf':
+        if not applicant.resume.storage.exists(applicant.resume.name):
+            raise Http404
+        with applicant.resume.open('rb') as resume_handle:
+            preview_context['pdf_page_images'] = _build_pdf_preview_images(resume_handle.read())
+        return render(request, 'main/applicant_resume_preview.html', preview_context)
+
+    if resume_extension == '.docx':
+        if not applicant.resume.storage.exists(applicant.resume.name):
+            raise Http404
+        preview_context['preview_text'] = ''
+        return render(request, 'main/applicant_resume_preview.html', preview_context)
+
+    if not applicant.resume_text:
+        raise Http404
+
+    return render(request, 'main/applicant_resume_preview.html', preview_context)
+
+
 # -----------------------------------------------------------------------
 # PROTECTED RESUME DOWNLOAD
 # Resumes contain PII (name, contact, address). This view gates access so
@@ -841,6 +1194,7 @@ def apply(request):
                 applicant.job_preference_locked = selected_job is not None
                 applicant.position = matched_job.title
                 applicant.match_score = round(match_result.overall_score * 100)
+                applicant.status = 'INTERVIEW' if applicant.match_score >= _INTERVIEW_MATCH_SCORE_THRESHOLD else 'NEW'
                 applicant.match_notes = serialize_match_result(
                     match_result,
                     matched_job=matched_job,
@@ -852,6 +1206,7 @@ def apply(request):
                     'applied_job',
                     'job_preference_locked',
                     'position',
+                    'status',
                     'match_score',
                     'match_notes',
                 ])

@@ -52,7 +52,7 @@
       >
         <span class="db-nav-button-main">
           <i class="bi bi-briefcase-fill"></i>
-          <span>Active Job Positions</span>
+          <span>Job</span>
         </span>
       </button>
       <button
@@ -118,7 +118,7 @@
           <div class="col-12 col-sm-6 col-xl-3">
             <article class="db-stat-card">
               <div class="db-stat-icon"><i class="bi bi-briefcase-fill"></i></div>
-              <div class="db-stat-label">Active Job Positions</div>
+              <div class="db-stat-label">Job</div>
               <div class="db-stat-value">{{ jobs|length }}</div>
             </article>
           </div>
@@ -169,12 +169,11 @@
                   <th>Status</th>
                   <th>Match</th>
                   <th>Applied Date</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {% for a in applicant_group.applicants %}
-                <tr>
+                <tr class="js-applicant-row" data-href="{% url 'applicant_detail' a.id %}" tabindex="0" role="link">
                   <td class="db-rank-col">
                     {% if a.rank == 1 %}
                       <span class="db-rank-badge db-rank-gold" title="Rank #1">&#x1F947;</span>
@@ -234,142 +233,10 @@
                     {% endif %}
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
-                  <td class="db-actions-cell">
-                    <div class="db-action-stack">
-                      {% if a.resume_download_url %}
-                        <button
-                          type="button"
-                          class="db-btn-resume"
-                          onclick="window.open('{{ a.resume_download_url }}', '_blank', 'noopener,noreferrer')"
-                          title="View uploaded resume"
-                          style="background:#1e73d8;color:#fff;border:none;border-radius:999px;padding:6px 12px;font-size:0.78rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;box-shadow:none;"
-                        >
-                          <i class="bi bi-file-earmark-text-fill"></i> View Resume
-                        </button>
-                      {% else %}
-                        <span class="text-muted">Unavailable</span>
-                      {% endif %}
-                      {% if a.match_notes %}
-                        <button
-                          type="button"
-                          class="db-btn-resume js-open-job-dialog"
-                          data-dialog-id="scoreBreakdownDialog-dashboard-{{ a.id }}"
-                          title="Analyze applicant score"
-                        >
-                          <i class="bi bi-bar-chart-fill"></i> Analyze Score
-                        </button>
-                      {% endif %}
-                    </div>
-                    {% if a.match_notes %}
-                    <dialog class="db-dialog" id="scoreBreakdownDialog-dashboard-{{ a.id }}">
-                      <div class="db-dialog-shell db-score-dialog-shell">
-                        <div class="db-dialog-header">
-                          <div>
-                            <h3 class="db-dialog-title">{{ a.get_full_name }} Score Analysis</h3>
-                            <p class="db-dialog-subtitle">Breakdown for {{ a.position|default:"Pending match" }}</p>
-                          </div>
-                          <button
-                            type="button"
-                            class="db-dialog-close js-close-job-dialog"
-                            data-dialog-id="scoreBreakdownDialog-dashboard-{{ a.id }}"
-                            aria-label="Close score breakdown"
-                          >
-                            <i class="bi bi-x-lg"></i>
-                          </button>
-                        </div>
-                        <div class="db-dialog-content">
-                          <div class="db-score-summary-card">
-                            <span class="db-score-breakdown-label">Overall Score</span>
-                            <div class="db-score-summary-value">{{ a.match_notes.overall_score|default:a.match_score }}%</div>
-                          </div>
-
-                          <section class="db-score-detail-section">
-                            <h4 class="db-job-detail-section-title">Recommendation</h4>
-                            {% if a.match_notes.recommendation.job_title %}
-                            <p class="db-score-summary-copy">
-                              Better fit found: <strong>{{ a.match_notes.recommendation.job_title }}</strong>
-                              ({{ a.match_notes.recommendation.overall_score }}%) instead of
-                              {{ a.position|default:"the current applied role" }}.
-                            </p>
-                            {% else %}
-                            <p class="db-score-summary-copy">This applicant currently fits their applied role best among the uploaded job descriptions.</p>
-                            {% endif %}
-                          </section>
-
-                          {% if a.match_notes.breakdown %}
-                          <div class="db-score-breakdown-grid">
-                            {% if a.match_notes.breakdown.skill_score or a.match_notes.breakdown.skill_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Skill Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.skill_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.skill_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                            {% if a.match_notes.breakdown.experience_score or a.match_notes.breakdown.experience_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Experience Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.experience_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.experience_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                            {% if a.match_notes.breakdown.education_score or a.match_notes.breakdown.education_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Education Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.education_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.education_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                          </div>
-                          {% endif %}
-
-                          <div class="db-score-detail-sections">
-                            <section class="db-score-detail-section">
-                              <h4 class="db-job-detail-section-title">Matching Skills</h4>
-                              {% if a.match_notes.matching_skills %}
-                              <div class="db-job-detail-skill-pills">
-                                {% for skill in a.match_notes.matching_skills %}
-                                  <span class="db-job-detail-skill-pill">{{ skill }}</span>
-                                {% endfor %}
-                              </div>
-                              {% else %}
-                              <p class="db-job-detail-empty">No matched skills were saved for this applicant.</p>
-                              {% endif %}
-                            </section>
-
-                            <section class="db-score-detail-section">
-                              <h4 class="db-job-detail-section-title">Missing Skills</h4>
-                              {% if a.match_notes.missing_skills %}
-                              <div class="db-job-detail-skill-pills">
-                                {% for skill in a.match_notes.missing_skills %}
-                                  <span class="db-score-missing-pill">{{ skill }}</span>
-                                {% endfor %}
-                              </div>
-                              {% else %}
-                              <p class="db-job-detail-empty">No missing skills were flagged for this applicant.</p>
-                              {% endif %}
-                            </section>
-                          </div>
-                        </div>
-                      </div>
-                    </dialog>
-                    {% endif %}
-                  </td>
                 </tr>
                 {% empty %}
                 <tr>
-                  <td colspan="7" class="text-center text-muted py-4">No applicants for this position yet.</td>
+                  <td colspan="6" class="text-center text-muted py-4">No applicants for this position yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -420,7 +287,7 @@
               </thead>
               <tbody>
                 {% for a in interview_group.applicants %}
-                <tr>
+                <tr class="js-applicant-row" data-href="{% url 'applicant_detail' a.id %}" tabindex="0" role="link">
                   <td class="db-rank-col">
                     {% if a.rank == 1 %}
                       <span class="db-rank-badge db-rank-gold" title="Rank #1">&#x1F947;</span>
@@ -466,16 +333,6 @@
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
                   <td class="db-actions-cell">
-                    {% if a.match_notes %}
-                      <button
-                        type="button"
-                        class="db-btn-resume js-open-job-dialog"
-                        data-dialog-id="scoreBreakdownDialog-status-{{ a.id }}"
-                        title="Analyze applicant score"
-                      >
-                        <i class="bi bi-bar-chart-fill"></i> Analyze Score
-                      </button>
-                    {% endif %}
                     {% if a.status == 'NEW' %}
                       <button
                         type="button"
@@ -534,111 +391,6 @@
                         <i class="bi bi-trash3-fill"></i> Remove Applicant
                       </button>
                     </form>
-                    {% if a.match_notes %}
-                    <dialog class="db-dialog" id="scoreBreakdownDialog-status-{{ a.id }}">
-                      <div class="db-dialog-shell db-score-dialog-shell">
-                        <div class="db-dialog-header">
-                          <div>
-                            <h3 class="db-dialog-title">{{ a.get_full_name }} Score Analysis</h3>
-                            <p class="db-dialog-subtitle">Breakdown for {{ a.position|default:"Pending match" }}</p>
-                          </div>
-                          <button
-                            type="button"
-                            class="db-dialog-close js-close-job-dialog"
-                            data-dialog-id="scoreBreakdownDialog-status-{{ a.id }}"
-                            aria-label="Close score breakdown"
-                          >
-                            <i class="bi bi-x-lg"></i>
-                          </button>
-                        </div>
-                        <div class="db-dialog-content">
-                          <div class="db-score-summary-card">
-                            <div class="db-score-summary-value">{{ a.match_notes.overall_score|default:a.match_score }}%</div>
-                            <p class="db-score-summary-copy">Overall match score based on skill match, experience match, and education match.</p>
-                          </div>
-
-                          <section class="db-score-detail-section">
-                            <h4 class="db-job-detail-section-title">Recommendation</h4>
-                            {% if a.match_notes.recommendation.job_title %}
-                            <p class="db-score-summary-copy">
-                              Better fit found: <strong>{{ a.match_notes.recommendation.job_title }}</strong>
-                              ({{ a.match_notes.recommendation.overall_score }}%) instead of
-                              {{ a.position|default:"the current applied role" }}.
-                            </p>
-                            {% else %}
-                            <p class="db-score-summary-copy">This applicant currently fits their applied role best among the uploaded job descriptions.</p>
-                            {% endif %}
-                          </section>
-
-                          {% if a.match_notes.breakdown %}
-                          <div class="db-score-breakdown-grid">
-                            {% if a.match_notes.breakdown.skill_score or a.match_notes.breakdown.skill_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Skill Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.skill_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.skill_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                            {% if a.match_notes.breakdown.experience_score or a.match_notes.breakdown.experience_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Experience Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.experience_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.experience_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                            {% if a.match_notes.breakdown.education_score or a.match_notes.breakdown.education_score == 0 %}
-                            <div class="db-score-breakdown-item">
-                              <div class="db-score-breakdown-head">
-                                <span class="db-score-breakdown-label">Education Score</span>
-                                <strong class="db-score-breakdown-value">{{ a.match_notes.breakdown.education_score }}%</strong>
-                              </div>
-                              <div class="db-score-bar-track" aria-hidden="true">
-                                <div class="db-score-bar-fill" data-score="{{ a.match_notes.breakdown.education_score }}"></div>
-                              </div>
-                            </div>
-                            {% endif %}
-                          </div>
-                          {% endif %}
-
-                          <div class="db-score-detail-sections">
-                            <section class="db-score-detail-section">
-                              <h4 class="db-job-detail-section-title">Matching Skills</h4>
-                              {% if a.match_notes.matching_skills %}
-                              <div class="db-job-detail-skill-pills">
-                                {% for skill in a.match_notes.matching_skills %}
-                                  <span class="db-job-detail-skill-pill">{{ skill }}</span>
-                                {% endfor %}
-                              </div>
-                              {% else %}
-                              <p class="db-job-detail-empty">No matched skills were saved for this applicant.</p>
-                              {% endif %}
-                            </section>
-
-                            <section class="db-score-detail-section">
-                              <h4 class="db-job-detail-section-title">Missing Skills</h4>
-                              {% if a.match_notes.missing_skills %}
-                              <div class="db-job-detail-skill-pills">
-                                {% for skill in a.match_notes.missing_skills %}
-                                  <span class="db-score-missing-pill">{{ skill }}</span>
-                                {% endfor %}
-                              </div>
-                              {% else %}
-                              <p class="db-job-detail-empty">No missing skills were flagged for this applicant.</p>
-                              {% endif %}
-                            </section>
-                          </div>
-                        </div>
-                      </div>
-                    </dialog>
-                    {% endif %}
                   </td>
                 </tr>
                 {% empty %}
@@ -1280,6 +1032,40 @@
 
       if (clickedOutside) {
         dialog.close();
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-applicant-row').forEach(function (row) {
+    function shouldIgnoreRowNavigation(target) {
+      return Boolean(target.closest('a, button, form, input, select, textarea, label, dialog'));
+    }
+
+    row.style.cursor = 'pointer';
+
+    row.addEventListener('click', function (event) {
+      if (shouldIgnoreRowNavigation(event.target)) {
+        return;
+      }
+
+      const href = row.dataset.href;
+      if (href) {
+        window.location.href = href;
+      }
+    });
+
+    row.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      if (shouldIgnoreRowNavigation(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      const href = row.dataset.href;
+      if (href) {
+        window.location.href = href;
       }
     });
   });

@@ -471,13 +471,16 @@ class JobDescriptionParser:
             ['requirements', 'minimum requirements', 'responsibilities', 'benefits'],
         )
 
-        required = extract_canonical_skills(required_section_text) if required_section_text else []
-        preferred = extract_canonical_skills(preferred_section_text) if preferred_section_text else []
-
+        required = []
+        preferred = []
         if required_section_text:
-            required = self._filter_education_domain_skills(required_section_text, required)
+            section_required, section_preferred = self._extract_section_skills(required_section_text, default_bucket='required')
+            required.extend(section_required)
+            preferred.extend(section_preferred)
         if preferred_section_text:
-            preferred = self._filter_education_domain_skills(preferred_section_text, preferred)
+            section_required, section_preferred = self._extract_section_skills(preferred_section_text, default_bucket='preferred')
+            required.extend(section_required)
+            preferred.extend(section_preferred)
 
         if not required and not preferred:
             all_skills = extract_canonical_skills(text)
@@ -493,6 +496,39 @@ class JobDescriptionParser:
         required = normalize_list_text(required)
         preferred = [skill for skill in normalize_list_text(preferred) if skill not in required]
         return required, preferred
+
+    def _extract_section_skills(self, section_text: str, default_bucket: str) -> tuple[list[str], list[str]]:
+        required = []
+        preferred = []
+
+        for raw_line in section_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            line_skills = extract_canonical_skills(line)
+            if not line_skills:
+                continue
+
+            line_skills = self._filter_education_domain_skills(line, line_skills)
+            if not line_skills:
+                continue
+
+            bucket = 'preferred' if self._line_has_preferred_skill_context(line) else default_bucket
+            if bucket == 'preferred':
+                preferred.extend(line_skills)
+            else:
+                required.extend(line_skills)
+
+        if required or preferred:
+            return required, preferred
+
+        # Fall back to whole-section extraction for dense paragraph-style JDs with no per-line bullets.
+        section_skills = extract_canonical_skills(section_text)
+        section_skills = self._filter_education_domain_skills(section_text, section_skills)
+        if default_bucket == 'preferred':
+            return [], section_skills
+        return section_skills, []
 
     def extract_responsibilities(self, text: str) -> list[str]:
         return self._extract_section_items(text, ['responsibilities', 'duties', 'what you will do'], limit=10)
@@ -708,6 +744,10 @@ class JobDescriptionParser:
         window_start = max(0, start - 50)
         window_end = min(len(text), start + length + 50)
         context = text[window_start:window_end]
+        return self._line_has_preferred_skill_context(context)
+
+    def _line_has_preferred_skill_context(self, text: str) -> bool:
+        context = (text or '').lower()
         return any(marker in context for marker in ['preferred', 'nice to have', 'bonus', 'plus', 'desired'])
 
     def _filter_education_domain_skills(self, text: str, skills: list[str]) -> list[str]:

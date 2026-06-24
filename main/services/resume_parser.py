@@ -672,11 +672,15 @@ class ResumeParser:
             text,
             ['education', 'academic background', 'academic qualifications', 'qualifications'],
             ['experience', 'work experience', 'employment history', 'professional experience', 'projects', 'skills', 'certifications'],
+            leading_context_lines=6,
         )
         if section_text:
-            lines = self._extract_section_lines(section_text, keywords, min_length=10, max_length=200, limit=5)
+            lines = self._extract_ranked_education_lines(section_text, limit=5)
             if lines:
                 return lines
+        lines = self._extract_ranked_education_lines(text, limit=5)
+        if lines:
+            return lines
         # limit=5: returns up to 5 lines; increase if education sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=10, max_length=200, limit=5)
 
@@ -694,11 +698,21 @@ class ResumeParser:
             text,
             ['experience', 'work experience', 'employment history', 'professional experience', 'career history', 'projects'],
             ['education', 'academic background', 'skills', 'certifications', 'references'],
+            leading_context_lines=6,
         )
+        title_lines = []
+        if section_text:
+            title_lines.extend(self._extract_ranked_experience_title_lines(section_text, limit=8))
+        title_lines.extend(self._extract_ranked_experience_title_lines(text, limit=8))
+        title_lines = self._dedupe_lines(title_lines)
+        if title_lines:
+            return title_lines[:8]
+
         if section_text:
             lines = self._extract_section_lines(section_text, keywords + ['years', 'yrs'], min_length=20, max_length=220, limit=8)
             if lines:
                 return lines
+        # limit=5: returns up to 5 lines; increase if education sections are being cut off
         # limit=8: returns up to 8 lines; increase if experience sections are being cut off
         return self._extract_keyword_lines(text, keywords, min_length=20, max_length=220, limit=8)
 
@@ -897,19 +911,36 @@ class ResumeParser:
         )
         return any(marker in context for marker in education_markers)
 
-    def _extract_first_section_text(self, text: str, section_names: list[str], stop_names: list[str]) -> str:
+    def _extract_first_section_text(self, text: str, section_names: list[str], stop_names: list[str], leading_context_lines: int = 0) -> str:
         lines = text.splitlines()
         start_index = None
+        section_heading_index = None
         for index, line in enumerate(lines):
             normalized = ' '.join(line.strip().lower().rstrip(':').split())
             if normalized in section_names:
                 start_index = index + 1
+                section_heading_index = index
                 break
 
         if start_index is None:
             return ''
 
         collected = []
+        if section_heading_index is not None and leading_context_lines > 0:
+            leading_lines = []
+            context_start = max(0, section_heading_index - leading_context_lines)
+            for line in reversed(lines[context_start:section_heading_index]):
+                stripped = ' '.join(line.split()).strip()
+                if not stripped:
+                    if leading_lines:
+                        break
+                    continue
+                normalized = stripped.lower().rstrip(':')
+                if normalized in stop_names or normalized in section_names:
+                    break
+                leading_lines.append(stripped)
+            collected.extend(reversed(leading_lines))
+
         for line in lines[start_index:]:
             stripped = ' '.join(line.split()).strip()
             if not stripped:
@@ -923,6 +954,71 @@ class ResumeParser:
             collected.append(stripped)
 
         return '\n'.join(collected).strip()
+
+    def _extract_ranked_education_lines(self, text: str, limit: int) -> list[str]:
+        keywords = ['university', 'college', 'institute', 'school', 'academy', 'bachelor', 'master', 'phd', 'mba', 'degree', 'diploma']
+        candidate_lines = []
+        lines = text.splitlines()
+        for index, raw_line in enumerate(lines):
+            line = ' '.join(raw_line.split())
+            line = re.sub(r'^[•\-*\d.)\s]+', '', line).strip()
+            if not line or not any(keyword in line.lower() for keyword in keywords):
+                continue
+            if not (10 < len(line) < 200):
+                continue
+            context = ' '.join(' '.join(part.split()).strip() for part in lines[index:index + 3] if part.strip())
+            score = self._score_recency_context(context)
+            candidate_lines.append((score, index, line))
+
+        ranked_lines = [line for _, _, line in sorted(candidate_lines, key=lambda item: (-item[0], item[1]))]
+        return self._dedupe_lines(ranked_lines)[:limit]
+
+    def _extract_ranked_experience_title_lines(self, text: str, limit: int) -> list[str]:
+        title_keywords = [
+            'developer', 'engineer', 'analyst', 'manager', 'lead', 'specialist', 'assistant', 'associate',
+            'attendant', 'barista', 'bartender', 'bellman', 'busser', 'butler', 'cashier', 'clerk',
+            'coordinator', 'customer service', 'front desk', 'host', 'housekeeping', 'officer', 'operations',
+            'receptionist', 'recruiter', 'representative', 'sales', 'scheduler', 'secretary', 'server',
+            'staff', 'supervisor', 'teacher', 'trainer', 'helper', 'kitchen', 'fitness', 'support', 'consultant',
+        ]
+        candidate_lines = []
+        lines = text.splitlines()
+        for index, raw_line in enumerate(lines):
+            normalized_line = ' '.join(raw_line.split()).strip()
+            if not normalized_line:
+                continue
+            cleaned = re.sub(r'^[•\-*\d.)\s]+', '', normalized_line).strip()
+            if cleaned != normalized_line:
+                continue
+            if not (8 < len(cleaned) < 140):
+                continue
+            lowered = cleaned.lower()
+            if not any(keyword in lowered for keyword in title_keywords):
+                continue
+            context = ' '.join(' '.join(part.split()).strip() for part in lines[index:index + 3] if part.strip())
+            score = self._score_recency_context(context)
+            candidate_lines.append((score, index, cleaned))
+
+        ranked_lines = [line for _, _, line in sorted(candidate_lines, key=lambda item: (-item[0], item[1]))]
+        return self._dedupe_lines(ranked_lines)[:limit]
+
+    def _score_recency_context(self, text: str) -> int:
+        context = (text or '').lower()
+        years = [int(year) for year in re.findall(r'\b(19\d{2}|20\d{2})\b', context)]
+        latest_year = max(years) if years else 0
+        present_bonus = 10000 if 'present' in context or 'current' in context else 0
+        return present_bonus + latest_year
+
+    def _dedupe_lines(self, lines: list[str]) -> list[str]:
+        deduped = []
+        seen = set()
+        for line in lines:
+            key = line.lower().strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(line)
+        return deduped
 
     def _extract_section_lines(
         self,

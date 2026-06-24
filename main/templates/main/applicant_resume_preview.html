@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resume Preview</title>
+  {% if resume_extension == '.docx' and resume_source_url %}
+    <script src="https://unpkg.com/docx-preview@0.3.3/dist/docx-preview.min.js"></script>
+  {% endif %}
+  <style>
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: #eef2f6;
+      color: #1f2933;
+    }
+
+    .preview-shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 20px 16px 32px;
+    }
+
+    .preview-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: #52606d;
+      font-size: 14px;
+    }
+
+    .preview-badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #d9e2ec;
+      color: #243b53;
+      padding: 4px 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    .preview-page {
+      background: #fff;
+      border: 1px solid #d9e2ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .preview-image {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .preview-text-card {
+      background: #fff;
+      border: 1px solid #d9e2ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+      padding: 28px;
+    }
+
+    .preview-docx-card {
+      min-height: 1120px;
+      padding: 32px 36px;
+    }
+
+    .preview-docx-page {
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+
+    .preview-docx-card h1,
+    .preview-docx-card h2,
+    .preview-docx-card h3,
+    .preview-docx-card h4,
+    .preview-docx-card h5,
+    .preview-docx-card h6 {
+      margin: 0 0 12px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      line-height: 1.3;
+      color: #102a43;
+    }
+
+    .preview-docx-paragraph {
+      margin: 0 0 12px;
+      line-height: 1.7;
+      font-size: 15px;
+      word-break: break-word;
+    }
+
+    .preview-docx-list {
+      margin: 0 0 16px;
+      padding-left: 22px;
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .preview-docx-list li + li {
+      margin-top: 6px;
+    }
+
+    .preview-docx-table-wrap {
+      overflow-x: auto;
+      margin: 0 0 16px;
+    }
+
+    .preview-docx-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .preview-docx-table td {
+      border: 1px solid #d9e2ec;
+      padding: 10px 12px;
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .preview-text {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .preview-empty {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+      border-radius: 14px;
+      padding: 18px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+
+    .preview-docx-host {
+      background: #fff;
+      border: 1px solid #d9e2ec;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+      padding: 18px;
+      min-height: 780px;
+    }
+
+    .preview-docx-viewer {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .preview-docx-host .docx-wrapper {
+      width: 100%;
+      background: transparent;
+      padding: 0;
+    }
+
+    .preview-docx-host .docx {
+      background: transparent;
+      padding: 0;
+    }
+
+    .preview-loading {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: #52606d;
+      font-size: 14px;
+      text-align: center;
+      padding: 24px 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <div class="preview-meta">
+      <div>{{ applicant.get_full_name|default:"Applicant Resume" }}</div>
+      <span class="preview-badge">{{ resume_extension|default:"file"|cut:"." }}</span>
+    </div>
+
+    {% if pdf_page_images %}
+      {% for image_data in pdf_page_images %}
+        <div class="preview-page">
+          <img
+            src="data:image/png;base64,{{ image_data }}"
+            alt="Resume page {{ forloop.counter }}"
+            class="preview-image"
+          >
+        </div>
+      {% endfor %}
+    {% elif resume_extension == '.docx' and resume_source_url %}
+      <div class="preview-docx-host">
+        <div id="docxPreviewStatus" class="preview-loading">Loading DOCX preview...</div>
+        <div id="docxPreviewContainer" class="preview-docx-viewer" hidden></div>
+        <div id="docxPreviewError" class="preview-empty" hidden>Unable to render this DOCX preview in the browser.</div>
+      </div>
+      <script>
+        (function () {
+          const sourceUrl = '{{ resume_source_url|escapejs }}';
+          const container = document.getElementById('docxPreviewContainer');
+          const status = document.getElementById('docxPreviewStatus');
+          const error = document.getElementById('docxPreviewError');
+
+          function showError() {
+            if (status) {
+              status.hidden = true;
+            }
+            if (container) {
+              container.hidden = true;
+            }
+            if (error) {
+              error.hidden = false;
+            }
+          }
+
+          if (!sourceUrl || !window.docx || !container) {
+            showError();
+            return;
+          }
+
+          fetch(sourceUrl, { credentials: 'same-origin' })
+            .then(function (response) {
+              if (!response.ok) {
+                throw new Error('DOCX fetch failed');
+              }
+              return response.arrayBuffer();
+            })
+            .then(function (buffer) {
+              return window.docx.renderAsync(buffer, container, null, {
+                className: 'docx',
+                inWrapper: true,
+                breakPages: true,
+                ignoreWidth: false,
+                ignoreHeight: false,
+                ignoreFonts: false,
+                experimental: true,
+              });
+            })
+            .then(function () {
+              if (status) {
+                status.hidden = true;
+              }
+              container.hidden = false;
+            })
+            .catch(function () {
+              showError();
+            });
+        })();
+      </script>
+      <noscript>
+        <div class="preview-empty">Enable JavaScript to preview DOCX files in the browser.</div>
+      </noscript>
+    {% elif preview_text %}
+      <div class="preview-text-card">
+        <pre class="preview-text">{{ preview_text }}</pre>
+      </div>
+    {% else %}
+      <div class="preview-empty">No preview content is available for this resume.</div>
+    {% endif %}
+  </div>
+</body>
+</html>

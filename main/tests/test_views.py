@@ -215,6 +215,7 @@ class ApplicantFlowTests(TestCase):
 		self.assertTrue(applicant.job_preference_locked)
 		self.assertIn('Python', applicant.parsed_skills)
 		self.assertGreaterEqual(applicant.match_score, 1)
+		self.assertEqual(applicant.status, 'INTERVIEW')
 		self.assertEqual(applicant.match_notes.get('matched_job', {}).get('job_title'), job.title)
 		self.assertEqual(applicant.match_notes.get('scored_job_count'), 1)
 
@@ -246,6 +247,34 @@ class ApplicantFlowTests(TestCase):
 		self.assertEqual(applicant.first_name, 'Marlou')
 		self.assertEqual(applicant.middle_name, 'R.')
 		self.assertEqual(applicant.last_name, 'Saysay')
+
+	def test_apply_keeps_status_new_when_match_score_is_below_70(self):
+		job = replace_active_job_description(build_text_file(
+			'backend-engineer.txt',
+			'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nPython Django APIs Kubernetes',
+		))
+
+		response = self.client.post(
+			reverse('apply'),
+			{
+				'job_id': str(job.id),
+				'resume': build_docx_file(
+					'low-match-resume.docx',
+					[
+						'Low Match Applicant',
+						'lowmatch@example.com',
+						'09123451111',
+						'Customer service communication',
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		applicant = Applicant.objects.get(email='lowmatch@example.com')
+		self.assertLess(applicant.match_score, 70)
+		self.assertEqual(applicant.status, 'NEW')
 
 	def test_apply_scores_resume_against_all_uploaded_jobs_for_recommendation(self):
 		selected_job = replace_active_job_description(build_text_file(
@@ -955,6 +984,40 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Open Email', html=False)
 		self.assertNotContains(response, 'Call Number', html=False)
 
+	def test_dashboard_refresh_promotes_high_match_applicant_to_interview(self):
+		job = replace_active_job_description(build_text_file(
+			'backend-role.txt',
+			'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nPython Django APIs',
+		))
+		applicant = Applicant.objects.create(
+			first_name='Jordan',
+			last_name='Cruz',
+			contact_number='+63 912 444 7788',
+			email='jordan@example.com',
+			resume=build_docx_file(
+				'jordan.docx',
+				[
+					'Jordan Cruz',
+					'jordan@example.com',
+					'+63 912 444 7788',
+					'Python Django APIs',
+				],
+			),
+			applied_job=job,
+			position=job.title,
+			status='NEW',
+			parsed_skills=['Python', 'Django', 'REST API'],
+			parsed_education=['Bachelor of Science in Information Technology'],
+			match_notes={},
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		applicant.refresh_from_db()
+		self.assertGreaterEqual(applicant.match_score, 70)
+		self.assertEqual(applicant.status, 'INTERVIEW')
+
 	def test_dashboard_renders_score_analysis_dialog_for_scored_applicants(self):
 		job = replace_active_job_description(build_text_file(
 			'backend-role.txt',
@@ -1060,11 +1123,25 @@ class ResumeAccessTests(TestCase):
 			resume=build_docx_file(
 				'secure-applicant.docx',
 				[
-					'Secure Applicant',
+					{'style': 'Heading 1', 'runs': [('Secure Applicant', True)]},
 					'secure-applicant@example.com',
 					'+63 912 345 6789',
+					('Python and Django development', 'List Bullet'),
 				],
 			),
+			position='Backend Developer',
+			resume_text='Secure Applicant\nPython\nDjango\nREST API',
+			match_score=78,
+			match_notes={
+				'overall_score': 78,
+				'matching_skills': ['Python'],
+				'missing_skills': ['Django'],
+				'breakdown': {
+					'skill_score': 65,
+					'experience_score': 80,
+					'education_score': 90,
+				},
+			},
 		)
 
 	def test_dashboard_uses_protected_resume_link(self):
@@ -1082,6 +1159,50 @@ class ResumeAccessTests(TestCase):
 
 		self.assertEqual(response.status_code, 302)
 		self.assertIn(reverse('login'), response['Location'])
+
+	def test_applicant_detail_requires_staff_login(self):
+		response = self.client.get(reverse('applicant_detail', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 302)
+		self.assertIn(reverse('login'), response['Location'])
+
+	def test_staff_can_view_applicant_detail_with_resume_and_score_analysis(self):
+		self.client.force_login(self.staff_user)
+
+		response = self.client.get(reverse('applicant_detail', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, self.applicant.get_full_name())
+		self.assertNotContains(response, 'Open Resume')
+		self.assertContains(response, reverse('applicant_resume_preview', args=[self.applicant.id]))
+		self.assertContains(response, 'Score Analysis')
+		self.assertContains(response, 'Extracted Resume Text')
+		self.assertContains(response, 'Python')
+		self.assertContains(response, 'Django')
+		self.assertContains(response, '78%')
+		self.assertContains(response, 'REST API')
+
+	def test_applicant_resume_preview_requires_staff_login(self):
+		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 302)
+		self.assertIn(reverse('login'), response['Location'])
+
+	def test_staff_can_view_pdf_style_resume_preview_for_docx(self):
+		self.client.force_login(self.staff_user)
+
+		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response['Content-Type'], 'text/html; charset=utf-8')
+		self.assertNotIn('X-Frame-Options', response)
+		self.assertContains(response, 'Resume Preview')
+		self.assertContains(response, 'secure-applicant.docx')
+		self.assertContains(response, 'docx-preview.min.js')
+		self.assertContains(response, reverse('serve_resume', args=[Path(self.applicant.resume.name).name]))
+		self.assertContains(response, 'Loading DOCX preview...')
+		self.assertContains(response, 'docxPreviewContainer')
+		self.assertNotContains(response, '<pre class="preview-text">', html=False)
 
 	def test_staff_can_view_resume_from_protected_route(self):
 		self.client.force_login(self.staff_user)

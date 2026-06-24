@@ -264,6 +264,35 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertNotIn('Information Technology', missing_skills)
         self.assertNotIn('Computer Science', missing_skills)
 
+    def test_matcher_missing_skills_only_tracks_unmatched_required_skills(self):
+        matcher = ResumeJobMatcher()
+
+        score, matching_skills, missing_skills = matcher.calculate_skill_match(
+            ['Python'],
+            ['Python', 'Django'],
+            ['Docker', 'Kubernetes'],
+        )
+
+        self.assertGreater(score, 0)
+        self.assertEqual(matching_skills, ['Python'])
+        self.assertIn('Django', missing_skills)
+        self.assertNotIn('Docker', missing_skills)
+        self.assertNotIn('Kubernetes', missing_skills)
+
+    def test_matcher_missing_skills_falls_back_to_preferred_when_required_is_empty(self):
+        matcher = ResumeJobMatcher()
+
+        score, matching_skills, missing_skills = matcher.calculate_skill_match(
+            ['CSS'],
+            [],
+            ['CSS', 'Python', 'Communication'],
+        )
+
+        self.assertGreater(score, 0)
+        self.assertEqual(matching_skills, ['CSS'])
+        self.assertIn('Python', missing_skills)
+        self.assertIn('Communication', missing_skills)
+
     def test_parse_uses_resume_parser_pro_as_fallback_for_basic_fields(self):
         parser = ResumeParser()
         resume_file = SimpleNamespace(name='resume.docx')
@@ -522,6 +551,23 @@ class JobDescriptionParserNerTests(SimpleTestCase):
             make_entity('Manila', 'GPE'),
         ])
 
+
+            def test_extract_education_prefers_most_recent_school_from_interleaved_pdf_text(self):
+                parser = ResumeParser()
+
+                education = parser.extract_education(
+                    'ACADEMIC BACKGROUND:\n'
+                    'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES\n'
+                    'Institute of Technology\n'
+                    'Class of 2021\n'
+                    'Diploma in Information Communication Technology\n'
+                    'ROOSEVELT COLLEGE INC. - CAINTA\n'
+                    'From 2016 to 2018\n'
+                    'Senior High Humanities and Social Science Strand\n'
+                )
+
+                self.assertGreaterEqual(len(education), 1)
+                self.assertEqual(education[0], 'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES')
         company = parser.extract_company(
             'We are hiring faculty members to join SmartScreen University this semester.'
         )
@@ -530,6 +576,24 @@ class JobDescriptionParserNerTests(SimpleTestCase):
 
     def test_extract_location_uses_gpe_entities_when_no_location_header_exists(self):
         parser = JobDescriptionParser()
+
+    def test_extract_experience_prefers_role_titles_from_interleaved_pdf_text(self):
+        parser = ResumeParser()
+
+        experience = parser.extract_experience(
+            'ASSISTANT TO SENIOR PROJECT MANAGER\n'
+            'Solaire Resorts & Casino Manila\n'
+            'Internship (300 hours) | September 2018 - October 2018\n'
+            'EMPLOYMENT HISTORY:\n'
+            'CONSULTANT - LEAD SOFTWARE DEVELOPER\n'
+            'Irvine Analytics Solutions | January 2021 - Present\n'
+            '• Develop their system using CodeIgniter3 / PHP.\n'
+            '• Develop web application with Python and Django Framework.\n'
+        )
+
+        self.assertGreaterEqual(len(experience), 2)
+        self.assertEqual(experience[0], 'CONSULTANT - LEAD SOFTWARE DEVELOPER')
+        self.assertIn('ASSISTANT TO SENIOR PROJECT MANAGER', experience)
         parser._nlp = StubNlp([
             make_entity('Manila', 'GPE'),
             make_entity('Quezon City', 'GPE'),
@@ -589,6 +653,22 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
         self.assertNotIn('Computer Science', preferred)
         self.assertIn('CSS', preferred)
         self.assertIn('Programming', preferred)
+
+    def test_extract_skills_keeps_plain_qualification_bullets_required(self):
+        parser = JobDescriptionParser()
+
+        required, preferred = parser.extract_skills(
+            'Qualifications\n'
+            '- Strong Python and Django experience\n'
+            '- Excellent communication skills\n'
+            '- Docker experience is a plus\n'
+        )
+
+        self.assertIn('Python', required)
+        self.assertIn('Django', required)
+        self.assertIn('Communication', required)
+        self.assertIn('Docker', preferred)
+        self.assertNotIn('Docker', required)
 
     def test_extract_responsibilities_preserves_txt_bullets_and_dashes(self):
         parser = JobDescriptionParser()
