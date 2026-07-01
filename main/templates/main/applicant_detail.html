@@ -73,36 +73,26 @@
     <div class="card shadow-sm mb-4">
       <div class="card-body">
         <h2 class="h5 mb-3">Score Analysis</h2>
-        {% if match_breakdown %}
-          <div class="row g-3 mb-3">
-            {% if match_breakdown.skill_score or match_breakdown.skill_score == 0 %}
-              <div class="col-sm-4">
-                <div class="border rounded p-3 h-100">
-                  <div class="text-muted small">Skill Score</div>
-                  <div class="fs-5 fw-semibold">{{ match_breakdown.skill_score }}%</div>
-                </div>
-              </div>
-            {% endif %}
-            {% if match_breakdown.experience_score or match_breakdown.experience_score == 0 %}
-              <div class="col-sm-4">
-                <div class="border rounded p-3 h-100">
-                  <div class="text-muted small">Experience Score</div>
-                  <div class="fs-5 fw-semibold">{{ match_breakdown.experience_score }}%</div>
-                </div>
-              </div>
-            {% endif %}
-            {% if match_breakdown.education_score or match_breakdown.education_score == 0 %}
-              <div class="col-sm-4">
-                <div class="border rounded p-3 h-100">
-                  <div class="text-muted small">Education Score</div>
-                  <div class="fs-5 fw-semibold">{{ match_breakdown.education_score }}%</div>
-                </div>
-              </div>
-            {% endif %}
+        <div class="row g-3 mb-3">
+          <div class="col-sm-4">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Skill Score</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.skill_score }}%</div>
+            </div>
           </div>
-        {% else %}
-          <p class="text-muted">No score breakdown is available for this applicant yet.</p>
-        {% endif %}
+          <div class="col-sm-4">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Experience Score</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.experience_score }}%</div>
+            </div>
+          </div>
+          <div class="col-sm-4">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Education Score</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.education_score }}%</div>
+            </div>
+          </div>
+        </div>
 
         <div class="mb-4">
           <h3 class="h6">Matched Job</h3>
@@ -125,6 +115,22 @@
             </ul>
           {% else %}
             <p class="text-muted mb-0">No Recommendations available.</p>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <h3 class="h6">Other Job Position Scores</h3>
+          {% if job_position_scores %}
+            <div class="list-group list-group-flush border rounded overflow-hidden">
+              {% for item in job_position_scores %}
+                <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
+                  <span class="fw-medium">{{ item.job_title }}</span>
+                  <span class="badge text-bg-primary">{{ item.overall_score }}%</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No job position scores available.</p>
           {% endif %}
         </div>
 

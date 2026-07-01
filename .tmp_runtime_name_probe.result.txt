@@ -1,4 +1,0 @@
-full_name='Employment History'
-email='jlfaelman@gmail.com'
-phone='+63 921 550 4226'
-locations=[]

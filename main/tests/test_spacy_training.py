@@ -463,3 +463,99 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertEqual(matcher._estimate_experience_level(['Built systems for 5 years']), 3)
         self.assertEqual(matcher._estimate_experience_level(['Led teams for 8 years']), 4)
         self.assertEqual(matcher._estimate_experience_level(['Directed programs for 10 years']), 5)
+
+    def test_calculate_education_match_scores_elementary_only_as_thirty_percent(self):
+        matcher = ResumeJobMatcher()
+
+        score = matcher.calculate_education_match(
+            ['Elementary Graduate'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(score, 0.3)
+
+    def test_calculate_education_match_scores_high_school_only_as_sixty_percent(self):
+        matcher = ResumeJobMatcher()
+
+        score = matcher.calculate_education_match(
+            ['High School Graduate'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(score, 0.6)
+
+    def test_calculate_education_match_uses_same_tiers_when_jd_has_no_requirement(self):
+        matcher = ResumeJobMatcher()
+
+        elementary_score = matcher.calculate_education_match(['Elementary Graduate'], [])
+        high_school_score = matcher.calculate_education_match(['High School Graduate'], [])
+        college_score = matcher.calculate_education_match(['Bachelor of Science in Information Technology'], [])
+
+        self.assertEqual(elementary_score, 0.3)
+        self.assertEqual(high_school_score, 0.6)
+        self.assertEqual(college_score, 1.0)
+
+    def test_matcher_includes_education_breakdown_when_jd_has_no_requirement(self):
+        resume = ResumeProfile(
+            raw_text='Office clerk with report writing and accounting experience.',
+            skills=['Report Writing'],
+            education=['Bachelor of Science in Accountancy'],
+            experience=['Accounting clerk with 8 years of experience'],
+        )
+        job = JobProfile(
+            title='Office Clerk',
+            raw_text='Office clerk report writing administrative support',
+            required_skills=['Report Writing'],
+            preferred_skills=[],
+            education_requirements=[],
+        )
+
+        with patch.object(ResumeJobMatcher, 'calculate_job_title_prediction_score', return_value=None):
+            result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertEqual(result.education_match_score, 1.0)
+        self.assertIn('education_score', result.breakdown)
+        self.assertEqual(result.breakdown['education_score'], 0.2)
+        self.assertLess(result.overall_score, 1.0)
+
+    def test_matcher_keeps_education_weight_at_twenty_percent_of_overall_score(self):
+        matcher = ResumeJobMatcher()
+
+        overall_score = matcher._calculate_weighted_score([
+            ('skill_score', 0.2, 0.50),
+            ('experience_score', 0.3, 0.30),
+            ('education_score', 1.0, 0.20),
+        ])
+
+        self.assertEqual(overall_score, 0.39)
+
+    def test_matcher_does_not_renormalize_to_hundred_percent_when_only_education_scores(self):
+        matcher = ResumeJobMatcher()
+
+        overall_score = matcher._calculate_weighted_score([
+            ('skill_score', None, 0.50),
+            ('experience_score', None, 0.30),
+            ('education_score', 1.0, 0.20),
+        ])
+
+        self.assertEqual(overall_score, 0.2)
+
+    def test_calculate_education_match_scores_college_or_higher_as_full_score(self):
+        matcher = ResumeJobMatcher()
+
+        bachelor_score = matcher.calculate_education_match(
+            ['Bachelor of Science in Information Technology'],
+            ['High School Diploma'],
+        )
+        masters_score = matcher.calculate_education_match(
+            ['Master of Science in Computer Science'],
+            ['Bachelor of Science in Computer Science'],
+        )
+        phd_score = matcher.calculate_education_match(
+            ['PhD in Data Science'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(bachelor_score, 1.0)
+        self.assertEqual(masters_score, 1.0)
+        self.assertEqual(phd_score, 1.0)

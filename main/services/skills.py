@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 import re
 from typing import Iterable, Optional
 
@@ -12,204 +14,67 @@ class SkillDefinition:
     aliases: tuple[str, ...]
 
 
-_SKILL_DEFINITIONS: tuple[SkillDefinition, ...] = (
-    SkillDefinition('Python', 'hard', ('python', 'py')),
-    SkillDefinition('Java', 'hard', ('java',)),
-    SkillDefinition('JavaScript', 'hard', ('javascript', 'js')),
-    SkillDefinition('TypeScript', 'hard', ('typescript', 'ts')),
-    SkillDefinition('C++', 'hard', ('c++', 'cpp')),
-    SkillDefinition('C#', 'hard', ('c#', 'csharp', '.net', 'dotnet')),
-    SkillDefinition('Ruby', 'hard', ('ruby',)),
-    SkillDefinition('Go', 'hard', ('go', 'golang')),
-    SkillDefinition('Rust', 'hard', ('rust',)),
-    SkillDefinition('Kotlin', 'hard', ('kotlin',)),
-    SkillDefinition('Swift', 'hard', ('swift',)),
-    SkillDefinition('PHP', 'hard', ('php',)),
-    SkillDefinition('HTML', 'hard', ('html',)),
-    SkillDefinition('CSS', 'hard', ('css',)),
-    SkillDefinition('React', 'hard', ('react', 'react.js', 'reactjs')),
-    SkillDefinition('Angular', 'hard', ('angular', 'angularjs')),
-    SkillDefinition('Vue', 'hard', ('vue', 'vue.js', 'vuejs')),
-    SkillDefinition('Node.js', 'hard', ('node.js', 'nodejs', 'node')),
-    SkillDefinition('Express', 'hard', ('express', 'express.js', 'expressjs')),
-    SkillDefinition('Flutter', 'hard', ('flutter',)),
-    SkillDefinition('Django', 'hard', ('django',)),
-    SkillDefinition('Flask', 'hard', ('flask',)),
-    SkillDefinition('FastAPI', 'hard', ('fastapi', 'fast api')),
-    SkillDefinition('GraphQL', 'hard', ('graphql', 'graph ql')),
-    SkillDefinition('REST API', 'hard', ('rest api', 'restful api', 'rest api development', 'rest services')),
-    SkillDefinition('Microservices', 'hard', ('microservices', 'micro services')),
-    SkillDefinition('SQL', 'hard', ('sql', 'structured query language')),
-    SkillDefinition('MongoDB', 'hard', ('mongodb', 'mongo db', 'mongo')),
-    SkillDefinition('PostgreSQL', 'hard', ('postgresql', 'postgres', 'psql')),
-    SkillDefinition('MySQL', 'hard', ('mysql', 'my sql')),
-    SkillDefinition('Redis', 'hard', ('redis',)),
-    SkillDefinition('Elasticsearch', 'hard', ('elasticsearch', 'elastic search', 'elastic')),
-    SkillDefinition('AWS', 'hard', ('aws', 'amazon web services')),
-    SkillDefinition('Azure', 'hard', ('azure', 'microsoft azure')),
-    SkillDefinition('GCP', 'hard', ('gcp', 'google cloud platform', 'google cloud')),
-    SkillDefinition('Docker', 'hard', ('docker', 'containers')),
-    SkillDefinition('Kubernetes', 'hard', ('kubernetes', 'k8s')),
-    SkillDefinition('Jenkins', 'hard', ('jenkins',)),
-    SkillDefinition('Terraform', 'hard', ('terraform',)),
-    SkillDefinition('Linux', 'hard', ('linux',)),
-    SkillDefinition('Git', 'hard', ('git', 'github', 'gitlab', 'bitbucket')),
-    SkillDefinition('Machine Learning', 'hard', ('machine learning', 'ml')),
-    SkillDefinition('Deep Learning', 'hard', ('deep learning', 'dl')),
-    SkillDefinition('AI', 'hard', ('ai', 'artificial intelligence')),
-    SkillDefinition('Data Science', 'hard', ('data science',)),
-    SkillDefinition('Data Analysis', 'hard', ('data analysis', 'data analytics')),
-    SkillDefinition('Tableau', 'hard', ('tableau',)),
-    SkillDefinition('Power BI', 'hard', ('power bi', 'powerbi')),
-    SkillDefinition('Excel', 'hard', ('excel', 'microsoft excel')),
-    SkillDefinition('Pandas', 'hard', ('pandas',)),
-    SkillDefinition('NumPy', 'hard', ('numpy', 'num py')),
-    SkillDefinition('TensorFlow', 'hard', ('tensorflow', 'tensor flow')),
-    SkillDefinition('PyTorch', 'hard', ('pytorch', 'py torch')),
-    SkillDefinition('Agile', 'hard', ('agile',)),
-    SkillDefinition('Scrum', 'hard', ('scrum',)),
-    SkillDefinition('DevOps', 'hard', ('devops', 'dev ops')),
-    SkillDefinition('Programming', 'hard', ('programming', 'coding')),
-    SkillDefinition('Software Development', 'hard', ('software development', 'software engineering')),
-    SkillDefinition('Networking', 'hard', ('networking', 'computer networks')),
-    SkillDefinition('Computer Hardware', 'hard', ('computer hardware', 'hardware troubleshooting')),
-    SkillDefinition('Database Management', 'hard', ('database management', 'database administration')),
-    SkillDefinition('Systems Analysis', 'hard', ('systems analysis', 'system analysis')),
-    SkillDefinition('Object-Oriented Programming', 'hard', ('object-oriented programming', 'object oriented programming', 'oop')),
-    SkillDefinition('Unit Testing', 'hard', ('unit testing', 'automated testing', 'tests')),
-    SkillDefinition('Debugging', 'hard', ('debugging', 'troubleshooting')),
-    SkillDefinition('Virtual Environment', 'hard', ('virtual environment', 'virtualenv', 'venv')),
-    SkillDefinition('Web Development', 'hard', ('web development',)),
-    SkillDefinition('Backend Development', 'hard', ('backend development', 'back end development', 'backend engineering')),
-    SkillDefinition('Full Stack Development', 'hard', ('full stack development', 'fullstack development', 'full-stack development')),
-    SkillDefinition('Cybersecurity', 'hard', ('cybersecurity', 'cyber security')),
-    SkillDefinition('Network Security', 'hard', ('network security',)),
-    SkillDefinition('Information Security', 'hard', ('information security', 'infosec')),
-    SkillDefinition('Ethical Hacking', 'hard', ('ethical hacking',)),
-    SkillDefinition('Penetration Testing', 'hard', ('penetration testing', 'pen testing', 'pentesting')),
-    SkillDefinition('Cryptography', 'hard', ('cryptography',)),
-    SkillDefinition('Security Operations', 'hard', ('security operations', 'soc')),
-    SkillDefinition('Vulnerability Assessment', 'hard', ('vulnerability assessment', 'vulnerability management')),
-    SkillDefinition('IT Consultancy', 'hard', ('it consultancy', 'it consulting')),
-    SkillDefinition('IT Certification', 'hard', ('it certification', 'technical certification')),
-    SkillDefinition('Technical Consulting', 'hard', ('technical consulting',)),
-    SkillDefinition('Applied Research', 'hard', ('applied research',)),
-    SkillDefinition('E-Learning', 'hard', ('e-learning', 'elearning')),
-    SkillDefinition('LMS', 'hard', ('lms', 'learning management system', 'learning management systems')),
-    SkillDefinition('Educational Technology', 'hard', ('educational technology', 'edtech', 'ed tech')),
-    SkillDefinition('AI Integration', 'hard', ('ai integration', 'artificial intelligence integration')),
-    SkillDefinition('Digital Transformation', 'hard', ('digital transformation',)),
-    SkillDefinition('Blended Learning', 'hard', ('blended learning',)),
-    SkillDefinition('Technology-Enhanced Learning', 'hard', ('technology-enhanced learning', 'technology enhanced learning')),
-    SkillDefinition('Communication', 'soft', ('communication', 'communications')),
-    SkillDefinition('Teamwork', 'soft', ('teamwork', 'team work')),
-    SkillDefinition('Leadership', 'soft', ('leadership', 'team leadership')),
-    SkillDefinition('Problem Solving', 'soft', ('problem solving', 'problem-solving')),
-    SkillDefinition('Critical Thinking', 'soft', ('critical thinking',)),
-    SkillDefinition('Time Management', 'soft', ('time management',)),
-    SkillDefinition('Adaptability', 'soft', ('adaptability', 'adaptable')),
-    SkillDefinition('Creativity', 'soft', ('creativity', 'creative thinking')),
-    SkillDefinition('Collaboration', 'soft', ('collaboration', 'collaborative')),
-    SkillDefinition('Decision Making', 'soft', ('decision making', 'decision-making')),
-    SkillDefinition('Teaching', 'soft', ('teaching', 'instruction')),
-    SkillDefinition('Curriculum Development', 'soft', ('curriculum development', 'curriculum design')),
-    SkillDefinition('Course Design', 'soft', ('course design', 'course development')),
-    SkillDefinition('Research', 'soft', ('research', 'research writing')),
-    SkillDefinition('Lecturing', 'soft', ('lecturing', 'lecture delivery')),
-    SkillDefinition('Academic Writing', 'soft', ('academic writing',)),
-    SkillDefinition('Mentoring', 'soft', ('mentoring', 'mentorship')),
-    SkillDefinition('Laboratory Supervision', 'soft', ('laboratory supervision', 'lab supervision')),
-    SkillDefinition('Thesis Supervision', 'soft', ('thesis supervision',)),
-    SkillDefinition('Lesson Planning', 'soft', ('lesson planning',)),
-    SkillDefinition('Classroom Management', 'soft', ('classroom management',)),
-    SkillDefinition('Student Engagement', 'soft', ('student engagement',)),
-    SkillDefinition('Instructional Design', 'soft', ('instructional design',)),
-    SkillDefinition('Course Facilitation', 'soft', ('course facilitation',)),
-    SkillDefinition('Learning Management', 'soft', ('learning management',)),
-    SkillDefinition('Student Discipline', 'soft', ('student discipline',)),
-    SkillDefinition('Student Assessment', 'soft', ('student assessment', 'assessment design')),
-    SkillDefinition('Student Evaluation', 'soft', ('student evaluation',)),
-    SkillDefinition('Academic Advising', 'soft', ('academic advising', 'student advising')),
-    SkillDefinition('Career Guidance', 'soft', ('career guidance', 'career counseling')),
-    SkillDefinition('Seminar Facilitation', 'soft', ('seminar facilitation',)),
-    SkillDefinition('Laboratory Instruction', 'soft', ('laboratory instruction', 'lab instruction')),
-    SkillDefinition('Professional Development', 'soft', ('professional development',)),
-    SkillDefinition('Faculty Development', 'soft', ('faculty development',)),
-    SkillDefinition('Online Learning', 'soft', ('online learning', 'distance learning')),
-    SkillDefinition('Online Course Development', 'soft', ('online course development',)),
-    SkillDefinition('Interpersonal Skills', 'soft', ('interpersonal skills', 'interpersonal skill')),
-    SkillDefinition('Coaching', 'soft', ('coaching',)),
-    SkillDefinition('Constructive Feedback', 'soft', ('constructive feedback',)),
-    SkillDefinition('Presentation Skills', 'soft', ('presentation skills', 'presentation skill')),
-    SkillDefinition('Project-Based Learning', 'soft', ('project-based learning', 'project based learning')),
-    SkillDefinition('Student Reporting', 'soft', ('student reporting',)),
-    SkillDefinition('Guest Service', 'soft', ('guest service', 'guest services', 'guest satisfaction', 'guest inquiries', 'vip guests')),
-    SkillDefinition('Customer Service', 'soft', ('customer service', 'customer support', 'client service')),
-    SkillDefinition('Customer Relations', 'soft', ('customer relations', 'client relations', 'customer engagement')),
-    SkillDefinition('Conflict Resolution', 'soft', ('conflict resolution', 'de-escalation', 'de escalation', 'complaint handling')),
-    SkillDefinition('Attention To Detail', 'soft', ('attention to detail', 'detail oriented', 'detail-oriented')),
-    SkillDefinition('Organization', 'soft', ('organization', 'organizational skills', 'organizing')),
-    SkillDefinition('Multitasking', 'soft', ('multitasking', 'multi-tasking', 'multi tasking')),
-    SkillDefinition('Negotiation', 'soft', ('negotiation', 'negotiating')),
-    SkillDefinition('Sales', 'soft', ('sales', 'selling', 'upselling', 'cross-selling', 'cross selling')),
-    SkillDefinition('Relationship Building', 'soft', ('relationship building', 'rapport building', 'client relationship management')),
-    SkillDefinition('Administrative Support', 'hard', ('administrative support', 'admin support', 'administrative assistance')),
-    SkillDefinition('Office Administration', 'hard', ('office administration', 'office management', 'office operations')),
-    SkillDefinition('Data Entry', 'hard', ('data entry', 'data encoding')),
-    SkillDefinition('Records Management', 'hard', ('records management', 'document control', 'filing')),
-    SkillDefinition('Documentation', 'hard', ('documentation', 'document preparation', 'report documentation')),
-    SkillDefinition('Report Writing', 'hard', ('report writing', 'report preparation', 'reporting')),
-    SkillDefinition('Scheduling', 'hard', ('scheduling', 'calendar management', 'appointment scheduling', 'roster management')),
-    SkillDefinition('Recruitment', 'hard', ('recruitment', 'recruiting', 'hiring')),
-    SkillDefinition('Talent Sourcing', 'hard', ('talent sourcing', 'candidate sourcing', 'sourcing')),
-    SkillDefinition('Screening', 'hard', ('screening', 'candidate screening', 'resume screening')),
-    SkillDefinition('Interview Coordination', 'hard', ('interview coordination', 'interview scheduling', 'interview facilitation')),
-    SkillDefinition('Onboarding', 'hard', ('onboarding', 'new hire onboarding', 'employee onboarding')),
-    SkillDefinition('Employee Relations', 'hard', ('employee relations', 'labor relations')),
-    SkillDefinition('Payroll Processing', 'hard', ('payroll processing', 'payroll administration', 'payroll')),
-    SkillDefinition('Benefits Administration', 'hard', ('benefits administration', 'benefits coordination')),
-    SkillDefinition('Training Delivery', 'hard', ('training delivery', 'facilitation', 'staff training', 'employee training')),
-    SkillDefinition('Compliance', 'hard', ('compliance', 'policy compliance', 'regulatory compliance')),
-    SkillDefinition('Audit Support', 'hard', ('audit support', 'audit preparation', 'audit coordination')),
-    SkillDefinition('Front Desk Operations', 'hard', ('front desk operations', 'front desk', 'reception')),
-    SkillDefinition('Reception', 'hard', ('reception', 'receptionist duties', 'guest reception')),
-    SkillDefinition('Reservation Management', 'hard', ('reservation management', 'booking management', 'reservations')),
-    SkillDefinition('Cash Handling', 'hard', ('cash handling', 'cashiering', 'cash management')),
-    SkillDefinition('Point Of Sale', 'hard', ('point of sale', 'pos', 'cash register')),
-    SkillDefinition('Barista Preparation', 'hard', ('barista', 'coffee preparation', 'espresso preparation', 'brew beverages', 'brewing equipment')),
-    SkillDefinition('Bartending', 'hard', ('bartending', 'cocktails', 'mix drinks', 'mix ingredients', 'serve wine and beer')),
-    SkillDefinition('Menu Knowledge', 'hard', ('menu knowledge', 'drink menus', 'bar menu', 'menu items')),
-    SkillDefinition('Luggage Handling', 'hard', ('luggage handling', 'retrieve luggage', 'transport luggage', 'deliver luggage')),
-    SkillDefinition('Guest Assistance', 'soft', ('guest assistance', 'assist guests', 'guest support')),
-    SkillDefinition('Table Service', 'hard', ('table service', 'serve snacks', 'serve drinks', 'guest table service')),
-    SkillDefinition('Dish Clearing', 'hard', ('dish clearing', 'remove dirty plates', 'clear plates', 'bussing tables')),
-    SkillDefinition('Fitness Center Operations', 'hard', ('fitness center', 'gym operations', 'gym attendant', 'fitness center policies')),
-    SkillDefinition('Equipment Maintenance', 'hard', ('equipment maintenance', 'maintenance needs', 'equipment operates properly')),
-    SkillDefinition('Child Supervision', 'hard', ('supervising children', 'child supervision', 'children safety', 'children well-being')),
-    SkillDefinition('Play Area Maintenance', 'hard', ('play areas clean', 'play area maintenance', 'children play areas')),
-    SkillDefinition('Kitchen Preparation', 'hard', ('kitchen helper', 'food preparation', 'peeling, cutting and shredding', 'mixing ingredients')),
-    SkillDefinition('Stock Replenishment', 'hard', ('replenish supplies', 'stock of clean mugs', 'stock of clean plates', 'keep the kitchen well stocked')),
-    SkillDefinition('Merchandising', 'hard', ('merchandising', 'product display', 'visual merchandising')),
-    SkillDefinition('Retail Operations', 'hard', ('retail operations', 'store operations')),
-    SkillDefinition('Housekeeping', 'hard', ('housekeeping', 'room cleaning', 'janitorial')),
-    SkillDefinition('Food Safety', 'hard', ('food safety', 'safe food handling', 'food handling')),
-    SkillDefinition('Childcare', 'hard', ('childcare', 'child care', 'child supervision')),
-    SkillDefinition('Event Coordination', 'hard', ('event coordination', 'event planning', 'event management')),
-    SkillDefinition('Order Taking', 'soft', ('order taking', 'take orders', 'taking orders')),
-    SkillDefinition('Food Service', 'hard', ('food service', 'food items', 'buffet service', 'buffet areas')),
-    SkillDefinition('Beverage Service', 'hard', ('beverage service', 'beverage items', 'beverages', 'drink service')),
-    SkillDefinition('Inventory Management', 'hard', ('inventory management', 'stock condiments', 'stock shelves', 'procurement', 'liquor inventory')),
-    SkillDefinition('Sanitation', 'hard', ('sanitation', 'sanitized', 'clean and sanitized', 'clean and organized')),
-)
+_SKILLS_DATA_PATH = Path(__file__).resolve().parents[2] / 'dataset' / 'skills.json'
+_VALID_SKILL_CATEGORIES = frozenset({'hard', 'soft'})
+
+
+def _normalize_text(value: str) -> str:
+    return ' '.join((value or '').strip().lower().split())
+
+
+def _load_skill_definitions() -> tuple[SkillDefinition, ...]:
+    try:
+        raw_value = json.loads(_SKILLS_DATA_PATH.read_text(encoding='utf-8'))
+    except FileNotFoundError as exc:
+        raise RuntimeError(f'Skill dictionary file not found: {_SKILLS_DATA_PATH}') from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f'Skill dictionary file is not valid JSON: {_SKILLS_DATA_PATH}') from exc
+
+    if not isinstance(raw_value, dict):
+        raise RuntimeError('Skill dictionary must be a JSON object keyed by canonical skill name.')
+
+    definitions = []
+    seen_names = set()
+    for canonical_name, payload in raw_value.items():
+        normalized_name = _normalize_text(str(canonical_name))
+        if not normalized_name or normalized_name in seen_names:
+            raise RuntimeError(f'Duplicate or empty skill name in {_SKILLS_DATA_PATH}: {canonical_name!r}')
+        seen_names.add(normalized_name)
+
+        if not isinstance(payload, dict):
+            raise RuntimeError(f'Skill entry for {canonical_name!r} must be an object.')
+
+        category = _normalize_text(str(payload.get('category', '')))
+        aliases = payload.get('aliases')
+        if category not in _VALID_SKILL_CATEGORIES:
+            raise RuntimeError(f'Skill entry for {canonical_name!r} has invalid category: {category!r}')
+        if not isinstance(aliases, list) or not aliases:
+            raise RuntimeError(f'Skill entry for {canonical_name!r} must define a non-empty aliases list.')
+
+        normalized_aliases = []
+        seen_aliases = set()
+        for alias in aliases:
+            alias_text = str(alias).strip()
+            normalized_alias = _normalize_text(alias_text)
+            if not normalized_alias or normalized_alias in seen_aliases:
+                continue
+            seen_aliases.add(normalized_alias)
+            normalized_aliases.append(alias_text)
+
+        if not normalized_aliases:
+            raise RuntimeError(f'Skill entry for {canonical_name!r} has no usable aliases.')
+
+        definitions.append(SkillDefinition(str(canonical_name).strip(), category, tuple(normalized_aliases)))
+
+    return tuple(definitions)
+
+
+_SKILL_DEFINITIONS = _load_skill_definitions()
 
 _EXCLUDED_NON_SKILLS = frozenset({
     'information technology',
     'computer science',
 })
-
-
-def _normalize_text(value: str) -> str:
-    return ' '.join((value or '').strip().lower().split())
 
 
 def _build_alias_pattern(alias: str) -> re.Pattern[str]:

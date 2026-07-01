@@ -107,6 +107,9 @@ class ResumeJobMatcher:
         # Ordinal scale 1-5 for education level comparison
         # Edit the values here to change how degree keywords map to the scale
         self.education_mapping = {
+            'elementary': 0,
+            'grade school': 0,
+            'primary school': 0,
             'high school': 1,
             'associate': 2,
             'diploma': 2,
@@ -130,7 +133,6 @@ class ResumeJobMatcher:
         job_profile_type = self._classify_job_profile(job, effective_required, effective_preferred)
         skill_known = bool(effective_required or effective_preferred)
         experience_known = bool(normalized_experience_level)
-        education_known = bool(job.education_requirements)
 
         skill_score, matching_skills, missing_skills = self.calculate_skill_match(
             normalized_resume_skills,
@@ -144,7 +146,7 @@ class ResumeJobMatcher:
         components = [
             ('skill_score', skill_score if skill_known else None, 0.50),
             ('experience_score', experience_score if experience_known else None, 0.30),
-            ('education_score', education_score if education_known else None, 0.20),
+            ('education_score', education_score, 0.20),
         ]
 
         overall_score = self._calculate_weighted_score(components)
@@ -207,15 +209,14 @@ class ResumeJobMatcher:
         components: list[tuple[str, Optional[float], float]],
     ) -> float:
         weighted_sum = 0.0
-        active_weight = 0.0
+        total_weight = sum(weight for _, _, weight in components)
+        if total_weight <= 0:
+            return 0.0
         for _, score, weight in components:
             if score is None:
                 continue
             weighted_sum += score * weight
-            active_weight += weight
-        if active_weight == 0:
-            return 0.0
-        return weighted_sum / active_weight
+        return weighted_sum / total_weight
 
     def _calculate_contribution_breakdown(
         self,
@@ -223,17 +224,16 @@ class ResumeJobMatcher:
         final_overall_score: float,
     ) -> dict[str, float]:
         weighted_sum = 0.0
-        active_weight = 0.0
+        total_weight = sum(weight for _, _, weight in components)
         for _, score, weight in components:
             if score is None:
                 continue
             weighted_sum += score * weight
-            active_weight += weight
 
-        if active_weight == 0:
+        if total_weight <= 0:
             return {}
 
-        uncapped_overall = weighted_sum / active_weight
+        uncapped_overall = weighted_sum / total_weight
         if uncapped_overall <= 0:
             return {
                 name: 0.0
@@ -243,7 +243,7 @@ class ResumeJobMatcher:
 
         scale = max(0.0, min(1.0, final_overall_score / uncapped_overall))
         return {
-            name: ((score * weight) / active_weight) * scale
+            name: ((score * weight) / total_weight) * scale
             for name, score, weight in components
             if score is not None
         }
@@ -365,19 +365,12 @@ class ResumeJobMatcher:
         return resume_score / max(job_score, 1)  # Partial credit proportional to how close they are
 
     def calculate_education_match(self, resume_education: Iterable[str], education_requirements: Iterable[str]) -> float:
-        if not education_requirements:
-            return 0.5
-        # Resume defaults to 0: a resume with no education section should not be
-        # assumed to have a bachelor's degree (the old default of 3 gave everyone
-        # a free pass against bachelor-level requirements).
-        # Job requirements default to 3 (bachelor's): if the text mentions education
-        # requirements but none of the explicit keywords match, bachelor's is the
-        # standard implicit expectation.
         resume_level = self._estimate_education_level(resume_education, default=0)
-        job_level = self._estimate_education_level(education_requirements, default=3)
-        if resume_level >= job_level:
-            return 1.0
-        return resume_level / max(job_level, 1)
+        if resume_level <= 0:
+            return 0.3 if any(line.strip() for line in resume_education) else 0.0
+        if resume_level == 1:
+            return 0.6
+        return 1.0
 
     def calculate_keyword_similarity(self, resume_text: str, job_text: str) -> float:
         if not resume_text.strip() or not job_text.strip():

@@ -678,42 +678,50 @@ def dashboard(request):
         action = request.POST.get('action', '').strip()
 
         if action == 'upload_job_description':
-            uploaded_job_file = request.FILES.get('job_description_file')
-            if not uploaded_job_file:
+            uploaded_job_files = [file_obj for file_obj in request.FILES.getlist('job_description_file') if file_obj]
+            if not uploaded_job_files:
                 messages.error(request, 'Please choose a job description file to upload.')
                 return redirect_to_dashboard('jobs')
 
             allowed_ext = {'.txt', '.docx'}
-            ext = os.path.splitext(uploaded_job_file.name)[1].lower()
-            if ext not in allowed_ext:
-                messages.error(request, 'Unsupported job description format. Use TXT or DOCX.')
-                return redirect_to_dashboard('jobs')
+            max_size = getattr(settings, 'MAX_JOB_DESCRIPTION_SIZE', 512 * 1024)
 
-            # Verify DOCX content using magic bytes (plain TXT has no signature).
-            if ext == '.docx':
-                _jd_magic = uploaded_job_file.read(4)
-                uploaded_job_file.seek(0)
-                if not _jd_magic.startswith(_MAGIC_DOCX):
-                    messages.error(request, 'The uploaded file does not appear to be a valid DOCX.')
+            for uploaded_job_file in uploaded_job_files:
+                ext = os.path.splitext(uploaded_job_file.name)[1].lower()
+                if ext not in allowed_ext:
+                    messages.error(request, 'Unsupported job description format. Use TXT or DOCX.')
                     return redirect_to_dashboard('jobs')
 
-            max_size = getattr(settings, 'MAX_JOB_DESCRIPTION_SIZE', 512 * 1024)
-            if uploaded_job_file.size > max_size:
-                messages.error(request, f'Job description file too large (max {max_size // 1024} KB).')
-                return redirect_to_dashboard('jobs')
+                # Verify DOCX content using magic bytes (plain TXT has no signature).
+                if ext == '.docx':
+                    _jd_magic = uploaded_job_file.read(4)
+                    uploaded_job_file.seek(0)
+                    if not _jd_magic.startswith(_MAGIC_DOCX):
+                        messages.error(request, 'The uploaded file does not appear to be a valid DOCX.')
+                        return redirect_to_dashboard('jobs')
 
+                if uploaded_job_file.size > max_size:
+                    messages.error(request, f'Job description file too large (max {max_size // 1024} KB).')
+                    return redirect_to_dashboard('jobs')
+
+            saved_jobs = []
             try:
-                job_result = replace_active_job_description(uploaded_job_file)
+                for uploaded_job_file in uploaded_job_files:
+                    job_result = replace_active_job_description(uploaded_job_file)
+                    if isinstance(job_result, list):
+                        saved_jobs.extend(job_result)
+                    else:
+                        saved_jobs.append(job_result)
             except ValueError as exc:
                 messages.error(request, str(exc))
             else:
-                if isinstance(job_result, list):
-                    titles = ', '.join(job.title for job in job_result[:3])
-                    if len(job_result) > 3:
-                        titles = f'{titles}, ...'
-                    messages.success(request, f'Uploaded {len(job_result)} job descriptions: {titles}.')
+                titles = ', '.join(job.title for job in saved_jobs[:3])
+                if len(saved_jobs) > 3:
+                    titles = f'{titles}, ...'
+                if len(saved_jobs) == 1:
+                    messages.success(request, f'Uploaded job description: {saved_jobs[0].title}.')
                 else:
-                    messages.success(request, f'Uploaded job description: {job_result.title}.')
+                    messages.success(request, f'Uploaded {len(saved_jobs)} job descriptions: {titles}.')
             return redirect_to_dashboard('jobs')
 
         if action == 'remove_job_description':
@@ -940,17 +948,69 @@ def applicant_detail(request, applicant_id):
 
     resume_name = os.path.basename(applicant.resume.name) if applicant.resume else ''
     resume_extension = os.path.splitext(resume_name)[1].lower()
+    match_notes = applicant.match_notes if isinstance(applicant.match_notes, dict) else {}
+    raw_breakdown = match_notes.get('breakdown', {}) if isinstance(match_notes.get('breakdown'), dict) else {}
+    match_breakdown = {
+        'skill_score': raw_breakdown.get('skill_score', 0),
+        'experience_score': raw_breakdown.get('experience_score', 0),
+        'education_score': raw_breakdown.get('education_score', 0),
+    }
+    matched_job = match_notes.get('matched_job', {}) if isinstance(match_notes.get('matched_job'), dict) else {}
+    matched_job_id = matched_job.get('job_id') if isinstance(matched_job.get('job_id'), int) else None
+    job_position_scores = match_notes.get('all_job_scores', []) if isinstance(match_notes.get('all_job_scores'), list) else []
+    if not job_position_scores:
+        fallback_scores = []
+        seen_job_ids = set()
+        overall_score = match_notes.get('overall_score')
+        if isinstance(matched_job.get('job_id'), int) and isinstance(matched_job.get('job_title'), str) and isinstance(overall_score, int):
+            seen_job_ids.add(matched_job['job_id'])
+            fallback_scores.append({
+                'job_id': matched_job['job_id'],
+                'job_title': matched_job['job_title'],
+                'overall_score': overall_score,
+            })
+
+        recommendations = match_notes.get('recommendations', []) if isinstance(match_notes.get('recommendations'), list) else []
+        for item in recommendations:
+            if not isinstance(item, dict):
+                continue
+            job_id = item.get('job_id')
+            job_title = item.get('job_title')
+            recommendation_score = item.get('overall_score')
+            if not isinstance(job_id, int) or not isinstance(job_title, str) or not isinstance(recommendation_score, int):
+                continue
+            if job_id in seen_job_ids:
+                continue
+            seen_job_ids.add(job_id)
+            fallback_scores.append({
+                'job_id': job_id,
+                'job_title': job_title,
+                'overall_score': recommendation_score,
+            })
+
+        job_position_scores = sorted(
+            fallback_scores,
+            key=lambda item: (-item['overall_score'], item['job_title'].lower()),
+        )
+
+    if matched_job_id is not None:
+        job_position_scores = [
+            item for item in job_position_scores
+            if isinstance(item, dict) and item.get('job_id') != matched_job_id
+        ]
+
     context = {
         'applicant': applicant,
         'resume_name': resume_name,
         'resume_extension': resume_extension,
         'resume_is_pdf': resume_extension == '.pdf',
-        'match_breakdown': applicant.match_notes.get('breakdown', {}) if isinstance(applicant.match_notes, dict) else {},
-        'matching_skills': applicant.match_notes.get('matching_skills', []) if isinstance(applicant.match_notes, dict) else [],
-        'missing_skills': applicant.match_notes.get('missing_skills', []) if isinstance(applicant.match_notes, dict) else [],
-        'recommendation': applicant.match_notes.get('recommendation', {}) if isinstance(applicant.match_notes, dict) else {},
-        'recommendations': applicant.match_notes.get('recommendations', []) if isinstance(applicant.match_notes, dict) else [],
-        'matched_job': applicant.match_notes.get('matched_job', {}) if isinstance(applicant.match_notes, dict) else {},
+        'match_breakdown': match_breakdown,
+        'matching_skills': match_notes.get('matching_skills', []),
+        'missing_skills': match_notes.get('missing_skills', []),
+        'recommendation': match_notes.get('recommendation', {}),
+        'recommendations': match_notes.get('recommendations', []),
+        'job_position_scores': job_position_scores,
+        'matched_job': matched_job,
     }
     return render(request, 'main/applicant_detail.html', context)
 

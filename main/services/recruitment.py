@@ -362,6 +362,9 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
         if any(key not in allowed_keys for key in breakdown):
             return False
 
+        if 'education_score' not in breakdown or not isinstance(breakdown.get('education_score'), int):
+            return False
+
         overall_score = match_notes.get('overall_score')
         if not isinstance(overall_score, int):
             return False
@@ -385,6 +388,23 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
             if not isinstance(job_id, int):
                 return False
             normalized_saved_job_ids.append(job_id)
+
+        all_job_scores = match_notes.get('all_job_scores')
+        if not isinstance(all_job_scores, list):
+            return False
+
+        normalized_score_job_ids = []
+        for item in all_job_scores:
+            if not isinstance(item, dict):
+                return False
+            job_id = item.get('job_id')
+            overall_score = item.get('overall_score')
+            if not isinstance(job_id, int) or not isinstance(overall_score, int):
+                return False
+            normalized_score_job_ids.append(job_id)
+
+        if normalized_score_job_ids != available_job_ids:
+            return False
 
         return normalized_saved_job_ids == available_job_ids
 
@@ -544,6 +564,23 @@ def _serialize_qualified_job_recommendations(scored_jobs) -> list[dict]:
     return sorted(qualified_jobs, key=lambda item: (-item['overall_score'], item['job_title'].lower()))
 
 
+def _serialize_all_job_scores(scored_jobs) -> list[dict]:
+    if not scored_jobs:
+        return []
+
+    all_job_scores = []
+    for job, result in scored_jobs:
+        if job is None or result is None:
+            continue
+        all_job_scores.append({
+            'job_id': job.id,
+            'job_title': job.title,
+            'overall_score': round(result.overall_score * 100),
+        })
+
+    return sorted(all_job_scores, key=lambda item: (-item['overall_score'], item['job_title'].lower()))
+
+
 def score_resume_against_jobs(resume_profile: ResumeProfile, jobs) -> list[tuple[JobDescription, object]]:
     matcher = get_matcher()
     return [
@@ -599,6 +636,7 @@ def serialize_match_result(result, *, matched_job=None, recommendation_job=None,
         payload['recommendation'] = recommendation
     if scored_jobs is not None:
         payload['recommendations'] = _serialize_qualified_job_recommendations(scored_jobs)
+        payload['all_job_scores'] = _serialize_all_job_scores(scored_jobs)
         payload['scored_job_ids'] = [job.id for job, _ in scored_jobs]
         payload['scored_job_count'] = len(scored_jobs)
     return payload

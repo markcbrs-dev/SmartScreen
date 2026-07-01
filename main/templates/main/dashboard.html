@@ -24,6 +24,13 @@
 
 {% block outer_content %}
 <div class="db-layout">
+  <div class="ss-loading-overlay" id="jobUploadLoadingOverlay" aria-hidden="true" role="status" aria-live="polite">
+    <div class="ss-loading-card">
+      <div class="ss-loading-spinner" aria-hidden="true"></div>
+      <p class="ss-loading-title">Uploading job description</p>
+      <p class="ss-loading-copy">Please wait.</p>
+    </div>
+  </div>
   <aside class="db-sidebar db-sidebar-open" id="dashboardSidebar">
     <div class="db-sidebar-header">
       <span class="db-sidebar-title">HR SYSTEM</span>
@@ -209,11 +216,13 @@
                   <td class="db-position-cell">
                     <div class="db-position-title">{{ a.position|default:"Pending match" }}</div>
                     <div class="db-position-subtitle">
+                    {% comment "Optional note describing why this is commented out" %}
                       {% if a.applied_job %}
                         
                       {% else %}
                         No job match stored yet.
                       {% endif %}
+                    {% endcomment %}
                     </div>
                   </td>
                   <td>
@@ -456,7 +465,7 @@
               <p class="db-section-copy">Upload a TXT or DOCX file to make it the active job description for applicant matching.</p>
             </div>
           </div>
-          <form method="post" enctype="multipart/form-data" class="db-upload-form">
+          <form method="post" enctype="multipart/form-data" class="db-upload-form" id="jobUploadForm">
             {% csrf_token %}
             <input type="hidden" name="action" value="upload_job_description">
             <div class="db-form-grid">
@@ -466,12 +475,13 @@
                 type="file"
                 name="job_description_file"
                 class="db-form-input db-form-file"
+                multiple
                 accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 required
               >
-              <p class="db-form-help">Accepted formats: TXT and DOCX. Maximum file size: 512 KB.</p>
+              <p class="db-form-help">Accepted formats: TXT and DOCX. You can select multiple files. Maximum file size: 512 KB per file.</p>
             </div>
-            <button type="submit" class="db-btn-resume db-form-submit">Upload Job Description</button>
+            <button type="submit" class="db-btn-resume db-form-submit" id="jobUploadSubmitButton">Upload Job Description</button>
           </form>
           </article>
 
@@ -761,7 +771,25 @@
   const contactDialogCopyEmailAction = document.getElementById('contactDialogCopyEmailAction');
   const contactDialogCopyPhoneAction = document.getElementById('contactDialogCopyPhoneAction');
   const contactDialogHint = document.getElementById('contactDialogHint');
+  const jobUploadForm = document.getElementById('jobUploadForm');
+  const jobUploadLoadingOverlay = document.getElementById('jobUploadLoadingOverlay');
+  const jobUploadSubmitButton = document.getElementById('jobUploadSubmitButton');
   const currentUrl = new URL(window.location.href);
+
+  function showLoadingOverlay(overlay, submitButton, loadingLabel) {
+    if (submitButton) {
+      submitButton.disabled = true;
+      if (loadingLabel) {
+        submitButton.dataset.originalText = submitButton.textContent;
+        submitButton.textContent = loadingLabel;
+      }
+    }
+
+    if (overlay) {
+      overlay.classList.add('is-visible');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+  }
 
   function setActionAvailability(element, enabled) {
     if (!element) {
@@ -888,6 +916,17 @@
 
       window.open(href, '_blank', 'noopener,noreferrer');
       event.preventDefault();
+    });
+  }
+
+  if (jobUploadForm) {
+    jobUploadForm.addEventListener('submit', function () {
+      const uploadInput = jobUploadForm.querySelector('input[name="job_description_file"]');
+      if (!uploadInput || !uploadInput.files || uploadInput.files.length === 0) {
+        return;
+      }
+
+      showLoadingOverlay(jobUploadLoadingOverlay, jobUploadSubmitButton, 'Uploading...');
     });
   }
 

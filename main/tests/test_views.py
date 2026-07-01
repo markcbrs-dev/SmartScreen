@@ -433,6 +433,31 @@ class JobUploadTests(TestCase):
 		self.assertContains(response, 'Kids Attendant')
 		self.assertContains(response, 'Bartender')
 
+	def test_dashboard_uploads_multiple_job_description_files(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': [
+					build_text_file(
+						'backend-engineer.txt',
+						'Job Title: Backend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nEmployment Type: Full Time\nPython Django APIs',
+					),
+					build_text_file(
+						'frontend-engineer.txt',
+						'Job Title: Frontend Engineer\nCompany: SmartScreen Labs\nLocation: Remote\nEmployment Type: Full Time\nJavaScript React CSS',
+					),
+				],
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Uploaded 2 job descriptions')
+		self.assertEqual(JobDescription.objects.count(), 2)
+		self.assertTrue(JobDescription.objects.filter(title='Backend Engineer').exists())
+		self.assertTrue(JobDescription.objects.filter(title='Frontend Engineer').exists())
+
 	def test_dashboard_uploads_job_description(self):
 		response = self.client.post(
 			reverse('dashboard'),
@@ -1181,6 +1206,7 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, reverse('applicant_resume_preview', args=[self.applicant.id]))
 		self.assertContains(response, 'Score Analysis')
 		self.assertContains(response, 'Extracted Resume Text')
+		self.assertContains(response, 'All Job Position Scores')
 		self.assertContains(response, 'Python')
 		self.assertContains(response, 'Django')
 		self.assertContains(response, '78%')
@@ -1188,6 +1214,9 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, 'Backend Developer')
 		self.assertContains(response, 'API Engineer')
 		self.assertContains(response, '72%')
+		self.assertEqual(len(response.context['job_position_scores']), 1)
+		self.assertEqual(response.context['job_position_scores'][0]['job_title'], 'API Engineer')
+		self.assertEqual(response.context['job_position_scores'][0]['overall_score'], 72)
 
 	def test_applicant_resume_preview_requires_staff_login(self):
 		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))

@@ -13,7 +13,7 @@ from docx.oxml.ns import qn
 from main.services.job_parser import JobDescriptionParser
 from main.services.matcher import ResumeJobMatcher
 from main.services.resume_parser import ResumeParser
-from main.services.skills import canonicalize_skill_list
+from main.services.skills import canonicalize_skill_list, get_skill_definitions
 
 
 class StubNlp:
@@ -267,6 +267,13 @@ class ResumeParserExtractionTests(SimpleTestCase):
         skills = canonicalize_skill_list(['Information Technology', 'Computer Science', 'Python'])
 
         self.assertEqual(skills, ['Python'])
+
+    def test_skill_definitions_include_hospitality_aliases(self):
+        definitions = get_skill_definitions()
+
+        guest_service = next(definition for definition in definitions if definition.canonical_name == 'Guest Service')
+
+        self.assertIn('vip guests', guest_service.aliases)
 
     def test_matcher_missing_skills_excludes_degree_domain_labels(self):
         matcher = ResumeJobMatcher()

@@ -472,6 +472,66 @@
       line-height:1.5;
     }
 
+    .ss-loading-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,0.44);
+      backdrop-filter:blur(3px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      z-index:1000;
+      opacity:0;
+      visibility:hidden;
+      pointer-events:none;
+      transition:opacity .18s ease, visibility .18s ease;
+    }
+
+    .ss-loading-overlay.is-visible{
+      opacity:1;
+      visibility:visible;
+      pointer-events:auto;
+    }
+
+    .ss-loading-card{
+      width:min(100%, 360px);
+      background:#fff;
+      border-radius:18px;
+      box-shadow:0 20px 45px rgba(15,23,42,0.18);
+      padding:28px 24px;
+      text-align:center;
+      border:1px solid rgba(15,23,42,0.08);
+    }
+
+    .ss-loading-spinner{
+      width:52px;
+      height:52px;
+      margin:0 auto 16px;
+      border-radius:50%;
+      border:4px solid rgba(30,115,216,0.18);
+      border-top-color:var(--blue);
+      animation:ss-loading-spin .8s linear infinite;
+    }
+
+    .ss-loading-title{
+      margin:0;
+      font-size:1.05rem;
+      font-weight:700;
+      color:var(--ink);
+    }
+
+    .ss-loading-copy{
+      margin:10px 0 0;
+      font-size:.94rem;
+      line-height:1.5;
+      color:var(--ink-soft);
+    }
+
+    @keyframes ss-loading-spin{
+      to{ transform:rotate(360deg); }
+    }
+
     @media (max-width:980px){
       .layout{ grid-template-columns:1fr; }
       html,body{ overflow:auto; }
@@ -502,6 +562,13 @@
   </header>
 
   <main class="wrap">
+    <div class="ss-loading-overlay" id="resumeUploadLoadingOverlay" aria-hidden="true" role="status" aria-live="polite">
+      <div class="ss-loading-card">
+        <div class="ss-loading-spinner" aria-hidden="true"></div>
+        <p class="ss-loading-title">Uploading resume</p>
+        <p class="ss-loading-copy">Please wait.</p>
+      </div>
+    </div>
     <div id="applicantLayout" class="layout{% if not request.POST.job_id %} layout-collapsed{% endif %}">
       <form id="profileForm" class="card application-card" method="post" action="{% url 'apply' %}" enctype="multipart/form-data">
         {% csrf_token %}
@@ -542,7 +609,7 @@
           <input id="resumeInput" name="resume" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
         </div>
 
-        <button type="submit" class="submit" {% if not active_job %}disabled{% endif %}>Submit Application</button>
+        <button type="submit" class="submit" id="resumeSubmitButton" {% if not active_job %}disabled{% endif %}>Submit Application</button>
       </form>
 
       <aside id="jobDescriptionCard" class="card job-card{% if not request.POST.job_id %} is-collapsed{% endif %}" aria-labelledby="job-description-title" aria-hidden="{% if request.POST.job_id %}false{% else %}true{% endif %}">
@@ -631,7 +698,21 @@
     const jobPills = document.querySelector('.job-pills');
     const jobMeta = document.querySelector('.job-meta');
     const descriptionSection = document.getElementById('jobDescriptionSection');
+    const resumeUploadLoadingOverlay = document.getElementById('resumeUploadLoadingOverlay');
+    const resumeSubmitButton = document.getElementById('resumeSubmitButton');
     let jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
+
+    function showApplicantLoadingOverlay() {
+      if (resumeSubmitButton) {
+        resumeSubmitButton.disabled = true;
+        resumeSubmitButton.textContent = 'Uploading...';
+      }
+
+      if (resumeUploadLoadingOverlay) {
+        resumeUploadLoadingOverlay.classList.add('is-visible');
+        resumeUploadLoadingOverlay.setAttribute('aria-hidden', 'false');
+      }
+    }
 
     uploadBtn.addEventListener('click', function () {
       resumeInput.click();
@@ -841,6 +922,19 @@
       updateSubmitAvailability();
       syncJobDescriptionVisibility();
       updateJobDescriptionCard();
+    }
+
+    if (profileForm) {
+      profileForm.addEventListener('submit', function () {
+        if (!resumeInput || !resumeInput.files || resumeInput.files.length === 0) {
+          return;
+        }
+        if (!jobIdSelect || !jobIdSelect.value) {
+          return;
+        }
+
+        showApplicantLoadingOverlay();
+      });
     }
   </script>
 </body>

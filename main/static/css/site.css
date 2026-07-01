@@ -13,6 +13,68 @@ body { background-color: #f8fafc; color: #212529; }
 .w-100 { width: 100% !important; }
 .ls-wide { letter-spacing: 0.06em; }
 
+.ss-loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 2000;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.ss-loading-overlay.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.ss-loading-card {
+  width: min(100%, 360px);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
+  padding: 28px 24px;
+  text-align: center;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.ss-loading-spinner {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  border: 4px solid rgba(30, 115, 216, 0.18);
+  border-top-color: #1e73d8;
+  animation: ss-loading-spin 0.8s linear infinite;
+}
+
+.ss-loading-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.ss-loading-copy {
+  margin: 10px 0 0;
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+@keyframes ss-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── Dashboard layout ───────────────────────────────────── */
 .db-body {
   background: #f3f6fb;
@@ -554,8 +616,27 @@ body { background-color: #f8fafc; color: #212529; }
   color: #1f2937;
   background: #fff;
   line-height: 1.3;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
 }
 .db-table tbody tr:last-child td { border-bottom: none !important; }
+
+.db-table tbody tr.js-applicant-row:hover td,
+.db-table tbody tr.js-applicant-row:focus td,
+.db-table tbody tr.js-applicant-row:focus-visible td {
+  background: #eef6ff;
+}
+
+.db-table tbody tr.js-applicant-row:hover,
+.db-table tbody tr.js-applicant-row:focus,
+.db-table tbody tr.js-applicant-row:focus-visible {
+  outline: none;
+}
+
+.db-table tbody tr.js-applicant-row:hover .db-applicant-name,
+.db-table tbody tr.js-applicant-row:focus .db-applicant-name,
+.db-table tbody tr.js-applicant-row:focus-visible .db-applicant-name {
+  color: #0f5fbd;
+}
 
 .db-applicant-cell {
   display: flex;
