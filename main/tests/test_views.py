@@ -4,9 +4,11 @@ from pathlib import Path
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 
 from docx import Document
@@ -1001,13 +1003,14 @@ class JobUploadTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'id="contactDialog"', html=False)
 		self.assertContains(response, 'class="db-btn-contact js-open-contact-dialog"', html=False)
+		self.assertContains(response, 'data-contact-applicant-id="', html=False)
 		self.assertContains(response, 'data-contact-email="avery@example.com"', html=False)
 		self.assertContains(response, 'data-contact-phone="+63 912 000 1122"', html=False)
 		self.assertContains(response, 'id="contactDialogEmailAction"', html=False)
-		self.assertNotContains(response, 'id="contactDialogPhoneAction"', html=False)
+		self.assertContains(response, 'id="contactDialogSmsAction"', html=False)
 		self.assertContains(response, 'https://mail.google.com/mail/?', html=False)
-		self.assertContains(response, 'Open Email', html=False)
-		self.assertNotContains(response, 'Call Number', html=False)
+		self.assertContains(response, 'Send Email', html=False)
+		self.assertContains(response, 'Send SMS', html=False)
 
 	def test_dashboard_refresh_promotes_high_match_applicant_to_interview(self):
 		job = replace_active_job_description(build_text_file(
@@ -1214,6 +1217,11 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, 'Backend Developer')
 		self.assertContains(response, 'API Engineer')
 		self.assertContains(response, '72%')
+		self.assertContains(response, 'Contact Applicant')
+		self.assertContains(response, 'https://mail.google.com/mail/?', html=False)
+		self.assertContains(response, 'sms:+639120001111', html=False)
+		self.assertContains(response, 'Send Email')
+		self.assertContains(response, 'Send SMS')
 		self.assertEqual(len(response.context['job_position_scores']), 1)
 		self.assertEqual(response.context['job_position_scores'][0]['job_title'], 'API Engineer')
 		self.assertEqual(response.context['job_position_scores'][0]['overall_score'], 72)

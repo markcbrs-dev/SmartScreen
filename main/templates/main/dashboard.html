@@ -343,6 +343,7 @@
                         type="button"
                         class="db-btn-contact js-open-contact-dialog"
                         title="Contact {{ a.email }}"
+                        data-contact-applicant-id="{{ a.id }}"
                         data-contact-name="{{ a.get_full_name }}"
                         data-contact-email="{{ a.email }}"
                         data-contact-phone="{{ a.contact_number|default:'' }}"
@@ -367,6 +368,7 @@
                         type="button"
                         class="db-btn-contact js-open-contact-dialog"
                         title="Send interview invitation to {{ a.email }}"
+                        data-contact-applicant-id="{{ a.id }}"
                         data-contact-name="{{ a.get_full_name }}"
                         data-contact-email="{{ a.email }}"
                         data-contact-phone="{{ a.contact_number|default:'' }}"
@@ -441,7 +443,10 @@
               </div>
               <div class="db-contact-dialog-actions">
                 <a href="#" class="db-btn-contact db-contact-action" id="contactDialogEmailAction" target="_blank" rel="noopener noreferrer">
-                  <i class="bi bi-envelope-fill"></i> Open Email
+                  <i class="bi bi-envelope-fill"></i> Send Email
+                </a>
+                <a href="#" class="db-btn-interview db-contact-action" id="contactDialogSmsAction" target="_blank" rel="noopener noreferrer">
+                  <i class="bi bi-chat-dots-fill"></i> Send SMS
                 </a>
                 <button type="button" class="db-btn-resume db-contact-action" id="contactDialogCopyEmailAction">
                   <i class="bi bi-copy"></i> Copy Email
@@ -768,6 +773,7 @@
   const contactDialogEmail = document.getElementById('contactDialogEmail');
   const contactDialogPhone = document.getElementById('contactDialogPhone');
   const contactDialogEmailAction = document.getElementById('contactDialogEmailAction');
+  const contactDialogSmsAction = document.getElementById('contactDialogSmsAction');
   const contactDialogCopyEmailAction = document.getElementById('contactDialogCopyEmailAction');
   const contactDialogCopyPhoneAction = document.getElementById('contactDialogCopyPhoneAction');
   const contactDialogHint = document.getElementById('contactDialogHint');
@@ -823,6 +829,20 @@
     return 'https://mail.google.com/mail/?' + params.toString();
   }
 
+  function buildSmsHref(phone, body) {
+    const normalizedPhone = (phone || '').replace(/\s+/g, '');
+    if (!normalizedPhone) {
+      return '#';
+    }
+
+    const params = new URLSearchParams();
+    if (body) {
+      params.set('body', body);
+    }
+    const query = params.toString();
+    return 'sms:' + normalizedPhone + (query ? '?' + query : '');
+  }
+
   function copyContactValue(value, label) {
     if (!value || !navigator.clipboard || !navigator.clipboard.writeText) {
       if (contactDialogHint) {
@@ -871,6 +891,10 @@
         contactDialogEmailAction.href = contactEmailValue ? buildGmailComposeHref(contactEmailValue, contactSubject, contactBody) : '#';
         setActionAvailability(contactDialogEmailAction, Boolean(contactEmailValue));
       }
+      if (contactDialogSmsAction) {
+        contactDialogSmsAction.href = contactPhoneValue ? buildSmsHref(contactPhoneValue, contactBody) : '#';
+        setActionAvailability(contactDialogSmsAction, Boolean(contactPhoneValue));
+      }
       setActionAvailability(contactDialogCopyEmailAction, Boolean(contactEmailValue));
       setActionAvailability(contactDialogCopyPhoneAction, Boolean(contactPhoneValue));
 
@@ -904,6 +928,25 @@
     contactDialogEmailAction.addEventListener('click', function (event) {
       const href = contactDialogEmailAction.getAttribute('href');
       const disabled = contactDialogEmailAction.getAttribute('aria-disabled') === 'true';
+
+      if (!href || href === '#' || disabled) {
+        event.preventDefault();
+        return;
+      }
+
+      if (contactDialog) {
+        contactDialog.close();
+      }
+
+      window.open(href, '_blank', 'noopener,noreferrer');
+      event.preventDefault();
+    });
+  }
+
+  if (contactDialogSmsAction) {
+    contactDialogSmsAction.addEventListener('click', function (event) {
+      const href = contactDialogSmsAction.getAttribute('href');
+      const disabled = contactDialogSmsAction.getAttribute('aria-disabled') === 'true';
 
       if (!href || href === '#' || disabled) {
         event.preventDefault();

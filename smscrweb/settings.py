@@ -10,6 +10,8 @@ HOW TO MODIFY
                             Order matters: authentication before custom middleware.
   Change upload limits    → edit MAX_UPLOAD_SIZE (resume) and MAX_JOB_DESCRIPTION_SIZE (JD).
   Change file storage     → edit MEDIA_ROOT and MEDIA_URL.
+    Configure SMTP email    → set EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD,
+                                                        EMAIL_USE_TLS/EMAIL_USE_SSL, and DEFAULT_FROM_EMAIL env vars.
   Enable spaCy NER        → set SMARTSCREEN_ENABLE_SPACY=1 in environment.
   Change textcat model dir→ set SMARTSCREEN_TEXTCAT_MODEL_DIR env var.
   Change timezone         → edit TIME_ZONE below.
@@ -32,6 +34,10 @@ from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.environ.get(name, 'True' if default else 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # SECRET_KEY must be provided via the SECRET_KEY environment variable.
@@ -166,6 +172,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Authentication redirects
 LOGIN_REDIRECT_URL = '/'
 LOGIN_URL = 'login'
+
+# Email / SMTP
+# These settings let the app send real outbound email for applicant follow-ups.
+# Provide them via .env or environment variables. Common examples:
+#   Gmail SMTP       → host=smtp.gmail.com, port=587, EMAIL_USE_TLS=True
+#   Outlook / M365   → host=smtp.office365.com, port=587, EMAIL_USE_TLS=True
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '25'))
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = _env_bool('EMAIL_USE_TLS', False)
+EMAIL_USE_SSL = _env_bool('EMAIL_USE_SSL', False)
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '20'))
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-reply@smartscreen.local')
 
 # Media / uploads
 MEDIA_URL = '/media/'

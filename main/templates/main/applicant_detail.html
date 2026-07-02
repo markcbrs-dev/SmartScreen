@@ -161,6 +161,34 @@
         </div>
       </div>
     </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Contact Applicant</h2>
+        <div class="border rounded p-3">
+          <div class="small text-muted">Email</div>
+          <div class="fw-medium">{{ applicant.email|default:"Not available" }}</div>
+          <div class="small text-muted mt-3">Phone</div>
+          <div class="fw-medium">{{ applicant.contact_number|default:"Not available" }}</div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <a
+              href="https://mail.google.com/mail/?view=cm&fs=1&to={{ applicant.email|urlencode }}&su={{ 'Application Follow-up - '|add:applicant.position|default:'Applicant'|urlencode }}&body={{ 'Dear '|add:applicant.first_name|add:', We would like to connect with you regarding your application for the '|add:applicant.position|default:'Applicant'|add:' position. Please reply to this email to confirm your availability. Thank you, SmartScreen HR Team'|urlencode }}"
+              class="btn btn-primary btn-sm{% if not applicant.email %} disabled{% endif %}"
+              {% if applicant.email %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %}
+            >
+              Send Email
+            </a>
+            <a
+              href="sms:{{ applicant.contact_number|cut:' ' }}?body={{ 'Hello '|add:applicant.first_name|add:', this is SmartScreen HR regarding your application for the '|add:applicant.position|default:'Applicant'|add:' position.'|urlencode }}"
+              class="btn btn-outline-success btn-sm{% if not applicant.contact_number %} disabled{% endif %}"
+              {% if applicant.contact_number %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %}
+            >
+              Send SMS
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
