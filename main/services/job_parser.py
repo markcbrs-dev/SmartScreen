@@ -53,8 +53,6 @@ import os
 import re
 from html import escape
 from typing import Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from .entities import JobProfile
 from .skills import (
@@ -86,13 +84,17 @@ try:
 except ImportError:
     genai = None
 
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
 
 ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 ENABLE_GEMINI = os.environ.get('SMARTSCREEN_ENABLE_GEMINI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 DEFAULT_GEMINI_MODEL = os.environ.get('SMARTSCREEN_GEMINI_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash'
 ENABLE_GROQ = os.environ.get('SMARTSCREEN_ENABLE_GROQ', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 DEFAULT_GROQ_MODEL = os.environ.get('SMARTSCREEN_GROQ_MODEL', 'llama-3.3-70b-versatile').strip() or 'llama-3.3-70b-versatile'
-GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 
 class JobDescriptionParser:
@@ -107,6 +109,8 @@ class JobDescriptionParser:
         self._gemini_client = None
         self._gemini_load_failed = False
         self._gemini_model = DEFAULT_GEMINI_MODEL
+        self._groq_client = None
+        self._groq_load_failed = False
         self._groq_model = DEFAULT_GROQ_MODEL
         self.tech_skills = self._load_tech_skills()           # Modify _load_tech_skills() to add/remove tech skill keywords
         self.soft_skills = self._load_soft_skills()           # Modify _load_soft_skills() to add/remove soft skill keywords
@@ -483,56 +487,56 @@ class JobDescriptionParser:
             return None
         return api_key
 
-    def _parse_with_groq(self, text: str, filename: Optional[str] = None) -> dict[str, object]:
+    def _get_groq_client(self):
+        if self._groq_client is not None:
+            return self._groq_client
+        if self._groq_load_failed or Groq is None:
+            logger.info(
+                'Groq job parser client unavailable: enabled=%s library_installed=%s prior_load_failed=%s.',
+                ENABLE_GROQ,
+                Groq is not None,
+                self._groq_load_failed,
+            )
+            return None
+
         api_key = self._get_groq_api_key()
         if api_key is None:
-            return {}
-
-        payload = {
-            'model': self._groq_model,
-            'messages': [
-                {
-                    'role': 'system',
-                    'content': 'You extract structured job description data and return JSON only.',
-                },
-                {
-                    'role': 'user',
-                    'content': self._build_gemini_prompt(text, filename=filename),
-                },
-            ],
-            'temperature': 0,
-        }
-        request = Request(
-            GROQ_CHAT_COMPLETIONS_URL,
-            data=json.dumps(payload).encode('utf-8'),
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-            },
-            method='POST',
-        )
+            self._groq_load_failed = True
+            return None
 
         try:
-            with urlopen(request, timeout=30) as response:
-                response_body = response.read().decode('utf-8')
-        except HTTPError as exc:
-            error_body = exc.read().decode('utf-8', errors='replace') if hasattr(exc, 'read') else ''
-            logger.exception('Groq failed to enrich the job profile. status=%s body=%s', exc.code, error_body)
+            self._groq_client = Groq(api_key=api_key)
+        except Exception:
+            logger.exception('Could not initialize the Groq client for job parsing; skipping Groq parsing.')
+            self._groq_load_failed = True
+            return None
+        return self._groq_client
+
+    def _parse_with_groq(self, text: str, filename: Optional[str] = None) -> dict[str, object]:
+        client = self._get_groq_client()
+        if client is None:
             return {}
-        except URLError:
-            logger.exception('Groq failed to enrich the job profile due to a network error.')
-            return {}
+
+        try:
+            response = client.chat.completions.create(
+                model=self._groq_model,
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': 'You extract structured job description data and return JSON only.',
+                    },
+                    {
+                        'role': 'user',
+                        'content': self._build_gemini_prompt(text, filename=filename),
+                    },
+                ],
+                temperature=0,
+            )
         except Exception:
             logger.exception('Groq failed to enrich the job profile.')
             return {}
 
-        try:
-            response_json = json.loads(response_body)
-        except json.JSONDecodeError:
-            logger.warning('Groq job parser response body was not valid JSON.')
-            return {}
-
-        response_text = self._extract_groq_response_text(response_json)
+        response_text = self._extract_groq_response_text(response)
         return self._parse_gemini_response(response_text, provider_name='Groq')
 
     def _build_gemini_prompt(self, text: str, filename: Optional[str] = None) -> str:
@@ -568,20 +572,14 @@ class JobDescriptionParser:
         prompt_lines.extend(['Job description text:', text[:20000]])
         return '\n'.join(prompt_lines)
 
-    def _extract_groq_response_text(self, response_json: dict[str, object]) -> str:
-        choices = response_json.get('choices')
+    def _extract_groq_response_text(self, response) -> str:
+        choices = getattr(response, 'choices', None)
         if not isinstance(choices, list) or not choices:
             return ''
 
         first_choice = choices[0]
-        if not isinstance(first_choice, dict):
-            return ''
-
-        message = first_choice.get('message')
-        if not isinstance(message, dict):
-            return ''
-
-        content = message.get('content')
+        message = getattr(first_choice, 'message', None)
+        content = getattr(message, 'content', None)
         return content if isinstance(content, str) else ''
 
     def _parse_gemini_response(self, response_text: str, provider_name: str = 'Gemini') -> dict[str, object]:
