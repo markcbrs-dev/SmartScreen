@@ -92,7 +92,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'simple_history.middleware.HistoryRequestMiddleware',  # Added for tracking HR User
-    'main.middleware.HRActivityMiddleware',                # Tracks page opens/checks
+    'main.middleware.HRActivityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware'                                # Tracks page opens/checks
 ]
 
 ROOT_URLCONF = 'smscrweb.urls'
@@ -186,6 +187,13 @@ MAX_JOB_DESCRIPTION_SIZE = 512 * 1024  # 512 KB
 
 # Static files root (required for `manage.py collectstatic` in production)
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # -----------------------------------------------------------------------
 # SECURITY HEADERS

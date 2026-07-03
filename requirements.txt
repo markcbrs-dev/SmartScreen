@@ -17,6 +17,7 @@ python-dotenv
 cryptography==45.0.2
 google-genai==2.8.0
 gunicorn==21.2.0
+whitenoise
 
 # Notes:
 # - `sqlite3`, `tkinter`, `pathlib`, and stdlib modules are not listed.
