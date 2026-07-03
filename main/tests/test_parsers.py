@@ -424,6 +424,38 @@ class ResumeParserExtractionTests(SimpleTestCase):
         gemini_client.models.generate_content.assert_called_once()
         self.assertEqual(profile.full_name, 'Jane Q. Applicant')
 
+    def test_parse_logs_gemini_call_metadata(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+        gemini_client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=Mock(return_value=SimpleNamespace(text='''
+                    {
+                        "full_name": "Jane Applicant",
+                        "email": null,
+                        "phone": null,
+                        "skills": [],
+                        "education": [],
+                        "experience": [],
+                        "organizations": [],
+                        "locations": []
+                    }
+                ''')),
+            ),
+        )
+
+        with patch.object(parser, 'extract_text', return_value='Professional Summary\nMotivated applicant'):
+            with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                    with patch.object(parser, '_get_gemini_client', return_value=gemini_client):
+                        with self.assertLogs('main.services.resume_parser', level='INFO') as logs:
+                            parser.parse(resume_file, filename='resume.docx')
+
+        joined_logs = '\n'.join(logs.output)
+        self.assertIn('Gemini enrichment enabled', joined_logs)
+        self.assertIn('Calling Gemini resume enrichment model=', joined_logs)
+        self.assertIn('Gemini resume enrichment completed', joined_logs)
+
     def test_parse_uses_gemini_to_enrich_resume_entities_even_when_local_fields_exist(self):
         parser = ResumeParser()
         resume_file = SimpleNamespace(name='resume.docx')
@@ -617,40 +649,22 @@ class ResumeParserExtractionTests(SimpleTestCase):
 
         self.assertTrue(any('Front Desk Associate' in line for line in experience))
 
+    def test_extract_education_prefers_most_recent_school_from_interleaved_pdf_text(self):
+        parser = ResumeParser()
 
-class JobDescriptionParserNerTests(SimpleTestCase):
-    def test_extract_company_uses_org_entity_when_no_company_header_exists(self):
-        parser = JobDescriptionParser()
-        parser._nlp = StubNlp([
-            make_entity('SmartScreen University', 'ORG'),
-            make_entity('Manila', 'GPE'),
-        ])
-
-
-            def test_extract_education_prefers_most_recent_school_from_interleaved_pdf_text(self):
-                parser = ResumeParser()
-
-                education = parser.extract_education(
-                    'ACADEMIC BACKGROUND:\n'
-                    'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES\n'
-                    'Institute of Technology\n'
-                    'Class of 2021\n'
-                    'Diploma in Information Communication Technology\n'
-                    'ROOSEVELT COLLEGE INC. - CAINTA\n'
-                    'From 2016 to 2018\n'
-                    'Senior High Humanities and Social Science Strand\n'
-                )
-
-                self.assertGreaterEqual(len(education), 1)
-                self.assertEqual(education[0], 'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES')
-        company = parser.extract_company(
-            'We are hiring faculty members to join SmartScreen University this semester.'
+        education = parser.extract_education(
+            'ACADEMIC BACKGROUND:\n'
+            'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES\n'
+            'Institute of Technology\n'
+            'Class of 2021\n'
+            'Diploma in Information Communication Technology\n'
+            'ROOSEVELT COLLEGE INC. - CAINTA\n'
+            'From 2016 to 2018\n'
+            'Senior High Humanities and Social Science Strand\n'
         )
 
-        self.assertEqual(company, 'SmartScreen University')
-
-    def test_extract_location_uses_gpe_entities_when_no_location_header_exists(self):
-        parser = JobDescriptionParser()
+        self.assertGreaterEqual(len(education), 1)
+        self.assertEqual(education[0], 'POLYTECHNIC UNIVERSITY OF THE PHILIPPINES')
 
     def test_extract_experience_prefers_role_titles_from_interleaved_pdf_text(self):
         parser = ResumeParser()
@@ -669,6 +683,24 @@ class JobDescriptionParserNerTests(SimpleTestCase):
         self.assertGreaterEqual(len(experience), 2)
         self.assertEqual(experience[0], 'CONSULTANT - LEAD SOFTWARE DEVELOPER')
         self.assertIn('ASSISTANT TO SENIOR PROJECT MANAGER', experience)
+
+
+class JobDescriptionParserNerTests(SimpleTestCase):
+    def test_extract_company_uses_org_entity_when_no_company_header_exists(self):
+        parser = JobDescriptionParser()
+        parser._nlp = StubNlp([
+            make_entity('SmartScreen University', 'ORG'),
+            make_entity('Manila', 'GPE'),
+        ])
+
+        company = parser.extract_company(
+            'We are hiring faculty members to join SmartScreen University this semester.'
+        )
+
+        self.assertEqual(company, 'SmartScreen University')
+
+    def test_extract_location_uses_gpe_entities_when_no_location_header_exists(self):
+        parser = JobDescriptionParser()
         parser._nlp = StubNlp([
             make_entity('Manila', 'GPE'),
             make_entity('Quezon City', 'GPE'),

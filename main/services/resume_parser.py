@@ -286,13 +286,28 @@ class ResumeParser:
 
     def _should_use_gemini(self, text: str) -> bool:
         if not text.strip():
+            logger.info('Gemini enrichment skipped because resume text is empty.')
             return False
-        return self._get_gemini_client() is not None
+        client = self._get_gemini_client()
+        enabled = client is not None
+        logger.info(
+            'Gemini enrichment %s for resume text length=%s model=%s.',
+            'enabled' if enabled else 'unavailable',
+            len(text),
+            self._gemini_model,
+        )
+        return enabled
 
     def _get_gemini_client(self):
         if self._gemini_client is not None:
             return self._gemini_client
         if self._gemini_load_failed or genai is None or not ENABLE_GEMINI:
+            logger.info(
+                'Gemini client unavailable: enabled=%s library_installed=%s prior_load_failed=%s.',
+                ENABLE_GEMINI,
+                genai is not None,
+                self._gemini_load_failed,
+            )
             return None
 
         api_key = os.environ.get('GEMINI_API_KEY', '').strip()
@@ -314,6 +329,12 @@ class ResumeParser:
         if client is None:
             return {}
 
+        logger.info(
+            'Calling Gemini resume enrichment model=%s text_length=%s filename_present=%s.',
+            self._gemini_model,
+            len(text),
+            bool(filename),
+        )
         try:
             response = client.models.generate_content(
                 model=self._gemini_model,
@@ -323,7 +344,17 @@ class ResumeParser:
             logger.exception('Gemini failed to enrich the resume profile.')
             return {}
 
-        return self._parse_gemini_response(getattr(response, 'text', '') or '')
+        response_text = getattr(response, 'text', '') or ''
+        parsed_response = self._parse_gemini_response(response_text)
+        logger.info(
+            'Gemini resume enrichment completed response_length=%s parsed_keys=%s has_full_name=%s has_email=%s has_phone=%s.',
+            len(response_text),
+            sorted(parsed_response.keys()),
+            bool(parsed_response.get('full_name')),
+            bool(parsed_response.get('email')),
+            bool(parsed_response.get('phone')),
+        )
+        return parsed_response
 
     def _build_gemini_prompt(self, text: str, filename: Optional[str] = None) -> str:
         prompt_lines = [
