@@ -60,6 +60,7 @@ from django.core.validators import EmailValidator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from .services.job_parser import JobDescriptionParser
 from .services.skills import normalize_employment_type
+from django.conf import settings
 
 try:
     import fitz
@@ -160,6 +161,33 @@ def _render_docx_runs_html(paragraph) -> str:
     return escape((paragraph.text or '').strip())
 
 
+def _is_docx_bold_only_heading_paragraph(paragraph) -> bool:
+    raw_text = (getattr(paragraph, 'text', '') or '').strip()
+    if not raw_text:
+        return False
+
+    normalized_text = _strip_leading_list_marker(raw_text).rstrip(':').strip()
+    if not normalized_text:
+        return False
+
+    has_text_run = False
+    for run in getattr(paragraph, 'runs', []):
+        run_text = (getattr(run, 'text', '') or '').strip()
+        if not run_text:
+            continue
+        stripped_text = _strip_leading_list_marker(run_text).rstrip(':').strip()
+        if not stripped_text:
+            continue
+        has_text_run = True
+        if not getattr(run, 'bold', False):
+            return False
+
+    if has_text_run:
+        return True
+
+    return bool(re.fullmatch(r'\*\*(.+?)\*\*:?$', raw_text))
+
+
 def _build_docx_preview_blocks(file_obj) -> list[dict[str, object]]:
     if DocxDocument is None:
         raise ValueError('DOCX support is not installed. Add python-docx to preview resume uploads.')
@@ -192,6 +220,12 @@ def _build_docx_preview_blocks(file_obj) -> list[dict[str, object]]:
             continue
 
         style_name = (getattr(getattr(paragraph, 'style', None), 'name', '') or '').lower()
+        if _is_docx_bold_only_heading_paragraph(paragraph):
+            flush_list_items()
+            heading_text = _strip_leading_list_marker(raw_text).rstrip(':').strip()
+            blocks.append({'type': 'heading', 'html': _render_inline_formatting(f'**{heading_text}**:')})
+            continue
+
         if _is_docx_list_paragraph(paragraph):
             list_items.append(paragraph_html)
             continue
@@ -437,7 +471,26 @@ def _append_section_block(section: dict[str, object], block_type: str, html: str
     blocks.append({'type': 'paragraph', 'html': html})
 
 
+def _strip_leading_list_marker(line: str) -> str:
+    return re.sub(r'^(?:[•*-]\s*|\d+[.)]\s*)', '', line).strip()
+
+
+def _extract_bold_only_heading(line: str) -> str | None:
+    candidate = _strip_leading_list_marker(line)
+    match = re.fullmatch(r'\*\*(.+?)\*\*:?$', candidate)
+    if not match:
+        return None
+
+    inner_text = match.group(1).strip().rstrip(':').strip()
+    if not inner_text:
+        return None
+    return f'**{inner_text}**:'
+
+
 def _is_description_heading(line: str) -> bool:
+    if _extract_bold_only_heading(line):
+        return True
+
     normalized = _normalize_description_line(line)
     if normalized in {
         'about the job',
@@ -466,8 +519,10 @@ def _build_formatted_text_sections(text: str, default_heading: str | None = None
             continue
 
         if _is_description_heading(line):
+            stripped_heading = _strip_leading_list_marker(line)
+            heading_line = _extract_bold_only_heading(line) or (stripped_heading if stripped_heading.endswith(':') else f'{stripped_heading}:')
             current_section = {
-                'heading_html': _render_inline_formatting(line if line.endswith(':') else f'{line}:'),
+                'heading_html': _render_inline_formatting(heading_line),
                 'blocks': [],
             }
             sections.append(current_section)
@@ -478,7 +533,7 @@ def _build_formatted_text_sections(text: str, default_heading: str | None = None
         if is_dash_bullet:
             cleaned = line.strip()
         else:
-            cleaned = re.sub(r'^(?:[•]\s+|\*\s+)', '', line).strip()
+            cleaned = _strip_leading_list_marker(line)
         if not cleaned:
             continue
 
@@ -500,6 +555,25 @@ def _build_description_preview_sections(text: str) -> list[dict[str, object]]:
 
 def _build_dashboard_preview_sections(text: str, max_chars: int = 250) -> list[dict[str, object]]:
     return _build_description_preview_sections(_truncate_formatted_text(text, max_chars))
+
+
+def _normalize_job_description_edit_text(text: str) -> str:
+    normalized_lines: list[str] = []
+    for raw_line in (text or '').splitlines():
+        stripped_line = raw_line.strip()
+        if stripped_line and _is_description_heading(stripped_line):
+            heading_line = _extract_bold_only_heading(stripped_line)
+            if heading_line is not None:
+                normalized_lines.append(heading_line)
+                continue
+
+            cleaned_heading = _strip_leading_list_marker(stripped_line)
+            normalized_lines.append(cleaned_heading if cleaned_heading.endswith(':') else f'{cleaned_heading}:')
+            continue
+
+        normalized_lines.append(raw_line)
+
+    return '\n'.join(normalized_lines)
 
 
 def _get_job_display_text(job: JobDescription) -> str:
@@ -828,6 +902,7 @@ def dashboard(request):
     for job in jobs:
         job.employment_type = normalize_employment_type(job.employment_type) or ''
         job.display_text = _get_job_display_text(job)
+        job.editable_raw_text = _normalize_job_description_edit_text(job.raw_text or '')
         if not getattr(job, 'reporting_to', ''):
             job.reporting_to = _job_description_parser.extract_reporting_to(job.display_text)
         job.description_text = extract_job_description_section(job.display_text)
@@ -949,11 +1024,21 @@ def applicant_detail(request, applicant_id):
     resume_name = os.path.basename(applicant.resume.name) if applicant.resume else ''
     resume_extension = os.path.splitext(resume_name)[1].lower()
     match_notes = applicant.match_notes if isinstance(applicant.match_notes, dict) else {}
+    raw_component_scores = match_notes.get('raw_component_scores', {}) if isinstance(match_notes.get('raw_component_scores'), dict) else {}
     raw_breakdown = match_notes.get('breakdown', {}) if isinstance(match_notes.get('breakdown'), dict) else {}
+    raw_component_breakdown = {
+        'skill_score': raw_component_scores.get('skill_score', raw_breakdown.get('skill_score', 0)),
+        'experience_score': raw_component_scores.get('experience_score', raw_breakdown.get('experience_score', 0)),
+        'education_score': raw_component_scores.get('education_score', raw_breakdown.get('education_score', 0)),
+    }
+    score_weights = {
+        'skill_score': 30,
+        'experience_score': 50,
+        'education_score': 20,
+    }
     match_breakdown = {
-        'skill_score': raw_breakdown.get('skill_score', 0),
-        'experience_score': raw_breakdown.get('experience_score', 0),
-        'education_score': raw_breakdown.get('education_score', 0),
+        key: round((raw_component_breakdown.get(key, 0) * weight) / 100)
+        for key, weight in score_weights.items()
     }
     matched_job = match_notes.get('matched_job', {}) if isinstance(match_notes.get('matched_job'), dict) else {}
     matched_job_id = matched_job.get('job_id') if isinstance(matched_job.get('job_id'), int) else None

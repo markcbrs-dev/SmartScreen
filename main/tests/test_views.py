@@ -624,7 +624,93 @@ class JobUploadTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, '<p class="db-job-description-heading"><strong>Responsibilities</strong>:</p>', html=False)
-		self.assertContains(response, '<p class="db-job-description-copy"><strong>Curriculum and Instruction Development</strong></p>', html=False)
+		self.assertContains(response, '<p class="db-job-description-heading"><strong>Curriculum and Instruction Development</strong>:</p>', html=False)
+
+	def test_dashboard_treats_docx_bold_bullet_lines_as_description_headings(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_docx_file(
+					'Room Attendant.docx',
+					[
+						'About the job',
+						{'style': 'List Bullet', 'runs': [('Educational Requirements', True)]},
+						('Senior High School Graduate', 'List Bullet'),
+					],
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<p class="db-job-description-heading"><strong>Educational Requirements</strong>:</p>', html=False)
+		self.assertContains(response, '<li>Senior High School Graduate</li>', html=False)
+		self.assertNotContains(response, '<li><strong>Educational Requirements</strong></li>', html=False)
+
+	def test_dashboard_treats_bold_bulleted_lines_as_description_headings(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'faculty-role.txt',
+					'About the job:\n'
+					'* **Responsibilities**\n'
+					'* Teach programming fundamentals.\n'
+					'* Prepare lesson plans.\n'
+					'* **Qualifications**\n'
+					'* Bachelor of Science in Computer Science\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<p class="db-job-description-heading"><strong>Responsibilities</strong>:</p>', html=False)
+		self.assertContains(response, '<li>Teach programming fundamentals.</li>', html=False)
+		self.assertContains(response, '<li>Prepare lesson plans.</li>', html=False)
+		self.assertContains(response, '<p class="db-job-description-heading"><strong>Qualifications</strong>:</p>', html=False)
+		self.assertContains(response, '<li>Bachelor of Science in Computer Science</li>', html=False)
+
+	def test_dashboard_strips_bullet_marker_from_non_bold_heading_lines(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'faculty-role.txt',
+					'About the job:\n'
+					'• Educational Requirements:\n'
+					'• Senior High School Graduate\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, '<p class="db-job-description-heading">Educational Requirements:</p>', html=False)
+		self.assertNotContains(response, '<p class="db-job-description-heading">• Educational Requirements:</p>', html=False)
+		self.assertContains(response, '<li>Senior High School Graduate</li>', html=False)
+
+	def test_dashboard_edit_dialog_strips_bullet_marker_from_heading_lines(self):
+		response = self.client.post(
+			reverse('dashboard'),
+			{
+				'action': 'upload_job_description',
+				'job_description_file': build_text_file(
+					'faculty-role.txt',
+					'About the job:\n'
+					'• Educational Requirements:\n'
+					'• Senior High School Graduate\n',
+				),
+			},
+			follow=True,
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Educational Requirements:', html=False)
+		self.assertNotContains(response, '>• Educational Requirements:<', html=False)
 
 	def test_dashboard_dialog_uses_about_the_job_section_with_formatting(self):
 		response = self.client.post(
@@ -1164,6 +1250,11 @@ class ResumeAccessTests(TestCase):
 				'overall_score': 78,
 				'matching_skills': ['Python'],
 				'missing_skills': ['Django'],
+				'raw_component_scores': {
+					'skill_score': 65,
+					'experience_score': 80,
+					'education_score': 100,
+				},
 				'recommendations': [
 					{'job_id': 1, 'job_title': 'Backend Developer', 'overall_score': 78},
 					{'job_id': 2, 'job_title': 'API Engineer', 'overall_score': 72},
@@ -1213,6 +1304,9 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, 'Python')
 		self.assertContains(response, 'Django')
 		self.assertContains(response, '78%')
+		self.assertContains(response, '20%')
+		self.assertContains(response, '40%')
+		self.assertContains(response, '20%')
 		self.assertContains(response, 'REST API')
 		self.assertContains(response, 'Backend Developer')
 		self.assertContains(response, 'API Engineer')

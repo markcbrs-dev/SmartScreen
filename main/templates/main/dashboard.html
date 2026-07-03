@@ -641,7 +641,7 @@
                       <input id="jobReportingTo-{{ job.id }}" type="text" name="reporting_to" class="db-form-input" value="{{ job.reporting_to }}" maxlength="200">
 
                       <label class="db-field-label" for="jobRawText-{{ job.id }}">Job Description</label>
-                      <textarea id="jobRawText-{{ job.id }}" name="raw_text" class="db-form-input" rows="10" required>{{ job.raw_text }}</textarea>
+                      <textarea id="jobRawText-{{ job.id }}" name="raw_text" class="db-form-input" rows="10" required>{{ job.editable_raw_text|default:job.raw_text }}</textarea>
                     </div>
                     <div class="d-flex justify-content-end gap-2 mt-3">
                       <button

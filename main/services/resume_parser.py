@@ -47,6 +47,8 @@ import os
 import re
 import tempfile
 from typing import IO, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from .entities import ResumeProfile
 from .skills import (
@@ -98,6 +100,9 @@ except ImportError:
 ENABLE_SPACY = os.environ.get('SMARTSCREEN_ENABLE_SPACY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 ENABLE_GEMINI = os.environ.get('SMARTSCREEN_ENABLE_GEMINI', '').strip().lower() in {'1', 'true', 'yes', 'on'}
 DEFAULT_GEMINI_MODEL = os.environ.get('SMARTSCREEN_GEMINI_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash'
+ENABLE_GROQ = os.environ.get('SMARTSCREEN_ENABLE_GROQ', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+DEFAULT_GROQ_MODEL = os.environ.get('SMARTSCREEN_GROQ_MODEL', 'llama-3.3-70b-versatile').strip() or 'llama-3.3-70b-versatile'
+GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 
 class ResumeParser:
@@ -121,6 +126,7 @@ class ResumeParser:
         self._gemini_client = None
         self._gemini_load_failed = False
         self._gemini_model = (gemini_model or DEFAULT_GEMINI_MODEL).strip() or 'gemini-2.5-flash'
+        self._groq_model = DEFAULT_GROQ_MODEL
         self.common_skills = self._load_common_skills()  # Modify _load_common_skills() to add/remove skill keywords
         # Lowercase set of all canonical skill names used to reject skill phrases
         # that appear at the top of a resume and could be misread as a person's name.
@@ -147,8 +153,12 @@ class ResumeParser:
         gemini_data = {}
         if self._should_use_gemini(raw_text):
             gemini_data = self._parse_with_gemini(raw_text, filename=filename)
+        groq_data = {}
+        if not gemini_data and self._should_use_groq(raw_text):
+            groq_data = self._parse_with_groq(raw_text, filename=filename)
+        llm_data = gemini_data or groq_data
         profile.full_name = self._select_best_full_name(
-            self._first_resume_parser_pro_value(gemini_data.get('full_name')),
+            self._first_resume_parser_pro_value(llm_data.get('full_name')),
             self._select_best_full_name(
                 self._first_resume_parser_pro_value(pro_data.get('name')),
                 fallback_name,
@@ -160,8 +170,8 @@ class ResumeParser:
                 profile.full_name = filename_name
         if not profile.full_name:
             profile.full_name = filename_name
-        if gemini_data:
-            self._merge_gemini_profile(profile, gemini_data)
+        if llm_data:
+            self._merge_gemini_profile(profile, llm_data)
         return profile
 
     def _should_use_resume_parser_pro(
@@ -356,6 +366,115 @@ class ResumeParser:
         )
         return parsed_response
 
+    def _should_use_groq(self, text: str) -> bool:
+        if not text.strip():
+            logger.info('Groq enrichment skipped because resume text is empty.')
+            return False
+
+        api_key = self._get_groq_api_key()
+        enabled = api_key is not None
+        logger.info(
+            'Groq enrichment %s for resume text length=%s model=%s.',
+            'enabled' if enabled else 'unavailable',
+            len(text),
+            self._groq_model,
+        )
+        return enabled
+
+    def _get_groq_api_key(self) -> Optional[str]:
+        if not ENABLE_GROQ:
+            logger.info('Groq enrichment is disabled; skipping Groq parsing.')
+            return None
+
+        api_key = os.environ.get('GROQ_API_KEY', '').strip()
+        if not api_key:
+            logger.info('Groq enrichment is enabled but GROQ_API_KEY is not set; skipping Groq parsing.')
+            return None
+        return api_key
+
+    def _parse_with_groq(self, text: str, filename: Optional[str] = None) -> dict[str, object]:
+        api_key = self._get_groq_api_key()
+        if api_key is None:
+            return {}
+
+        payload = {
+            'model': self._groq_model,
+            'messages': [
+                {
+                    'role': 'system',
+                    'content': 'You extract structured resume data and return JSON only.',
+                },
+                {
+                    'role': 'user',
+                    'content': self._build_gemini_prompt(text, filename=filename),
+                },
+            ],
+            'temperature': 0,
+        }
+        request = Request(
+            GROQ_CHAT_COMPLETIONS_URL,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+
+        logger.info(
+            'Calling Groq resume enrichment model=%s text_length=%s filename_present=%s.',
+            self._groq_model,
+            len(text),
+            bool(filename),
+        )
+        try:
+            with urlopen(request, timeout=30) as response:
+                response_body = response.read().decode('utf-8')
+        except HTTPError as exc:
+            error_body = exc.read().decode('utf-8', errors='replace') if hasattr(exc, 'read') else ''
+            logger.exception('Groq failed to enrich the resume profile. status=%s body=%s', exc.code, error_body)
+            return {}
+        except URLError:
+            logger.exception('Groq failed to enrich the resume profile due to a network error.')
+            return {}
+        except Exception:
+            logger.exception('Groq failed to enrich the resume profile.')
+            return {}
+
+        try:
+            response_json = json.loads(response_body)
+        except json.JSONDecodeError:
+            logger.warning('Groq response body was not valid JSON.')
+            return {}
+
+        response_text = self._extract_groq_response_text(response_json)
+        parsed_response = self._parse_gemini_response(response_text, provider_name='Groq')
+        logger.info(
+            'Groq resume enrichment completed response_length=%s parsed_keys=%s has_full_name=%s has_email=%s has_phone=%s.',
+            len(response_text),
+            sorted(parsed_response.keys()),
+            bool(parsed_response.get('full_name')),
+            bool(parsed_response.get('email')),
+            bool(parsed_response.get('phone')),
+        )
+        return parsed_response
+
+    def _extract_groq_response_text(self, response_json: dict[str, object]) -> str:
+        choices = response_json.get('choices')
+        if not isinstance(choices, list) or not choices:
+            return ''
+
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            return ''
+
+        message = first_choice.get('message')
+        if not isinstance(message, dict):
+            return ''
+
+        content = message.get('content')
+        return content if isinstance(content, str) else ''
+
     def _build_gemini_prompt(self, text: str, filename: Optional[str] = None) -> str:
         prompt_lines = [
             'Extract structured resume data from the resume text below.',
@@ -386,7 +505,7 @@ class ResumeParser:
         ])
         return '\n'.join(prompt_lines)
 
-    def _parse_gemini_response(self, response_text: str) -> dict[str, object]:
+    def _parse_gemini_response(self, response_text: str, provider_name: str = 'Gemini') -> dict[str, object]:
         if not response_text.strip():
             return {}
 
@@ -400,12 +519,12 @@ class ResumeParser:
         except json.JSONDecodeError:
             match = re.search(r'\{.*\}', candidate, re.DOTALL)
             if not match:
-                logger.warning('Gemini response did not contain valid JSON.')
+                logger.warning('%s response did not contain valid JSON.', provider_name)
                 return {}
             try:
                 parsed = json.loads(match.group(0))
             except json.JSONDecodeError:
-                logger.warning('Gemini response JSON could not be decoded.')
+                logger.warning('%s response JSON could not be decoded.', provider_name)
                 return {}
 
         return parsed if isinstance(parsed, dict) else {}

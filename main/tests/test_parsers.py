@@ -456,6 +456,40 @@ class ResumeParserExtractionTests(SimpleTestCase):
         self.assertIn('Calling Gemini resume enrichment model=', joined_logs)
         self.assertIn('Gemini resume enrichment completed', joined_logs)
 
+    def test_parse_falls_back_to_groq_when_gemini_returns_no_data(self):
+        parser = ResumeParser()
+        resume_file = SimpleNamespace(name='resume.docx')
+        groq_data = {
+            'full_name': 'Jane Applicant',
+            'email': 'jane@example.com',
+            'phone': '09123456789',
+            'skills': ['Python', 'Django'],
+            'education': ['Example University'],
+            'experience': ['Software Engineer at Example Corp'],
+            'organizations': ['Example Corp'],
+            'locations': ['Manila'],
+        }
+
+        with patch.object(parser, 'extract_text', return_value='Professional Summary\nMotivated applicant'):
+            with patch.object(parser, 'extract_entities', return_value=([], [], None)):
+                with patch.object(parser, '_parse_with_resume_parser_pro', return_value={}):
+                    with patch.object(parser, '_should_use_gemini', return_value=True):
+                        with patch.object(parser, '_parse_with_gemini', return_value={}) as gemini_parser:
+                            with patch.object(parser, '_should_use_groq', return_value=True):
+                                with patch.object(parser, '_parse_with_groq', return_value=groq_data) as groq_parser:
+                                    profile = parser.parse(resume_file, filename='resume.docx')
+
+        gemini_parser.assert_called_once()
+        groq_parser.assert_called_once()
+        self.assertEqual(profile.full_name, 'Jane Applicant')
+        self.assertEqual(profile.email, 'jane@example.com')
+        self.assertEqual(profile.phone, '+63 912 345 6789')
+        self.assertEqual(profile.skills, ['Python', 'Django'])
+        self.assertEqual(profile.education, ['Example University'])
+        self.assertEqual(profile.experience, ['Software Engineer at Example Corp'])
+        self.assertEqual(profile.organizations, ['Example Corp'])
+        self.assertEqual(profile.locations, ['Manila'])
+
     def test_parse_uses_gemini_to_enrich_resume_entities_even_when_local_fields_exist(self):
         parser = ResumeParser()
         resume_file = SimpleNamespace(name='resume.docx')
@@ -757,6 +791,53 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
             profile = parser.parse_text('Hiring for a backend role supporting our Manila team.', filename='backend-role.txt')
 
         gemini_client.models.generate_content.assert_called_once()
+        self.assertEqual(profile.title, 'Backend Engineer')
+        self.assertEqual(profile.reporting_to, 'Engineering Manager')
+        self.assertEqual(profile.company, 'Example Corp')
+        self.assertEqual(profile.location, 'Manila')
+        self.assertEqual(profile.employment_type, 'Full-Time')
+        self.assertEqual(profile.experience_level, 'senior')
+        self.assertEqual(profile.salary_range, '$5000-$7000')
+        self.assertTrue(profile.remote_option)
+        self.assertIn('Python', profile.required_skills)
+        self.assertIn('Django', profile.required_skills)
+        self.assertIn('Docker', profile.preferred_skills)
+        self.assertEqual(profile.responsibilities, ['Build APIs'])
+        self.assertEqual(profile.qualifications, ["Bachelor's degree"])
+        self.assertEqual(profile.education_requirements, ['Bachelor Of Science In Computer Science'])
+        self.assertEqual(profile.certifications, ['Aws Certified'])
+        self.assertEqual(profile.benefits, ['Health insurance'])
+        self.assertEqual(profile.industries, ['Technology'])
+
+    def test_parse_falls_back_to_groq_when_job_gemini_returns_no_data(self):
+        parser = JobDescriptionParser()
+        groq_data = {
+            'title': 'Backend Engineer',
+            'reporting_to': 'Engineering Manager',
+            'company': 'Example Corp',
+            'location': 'Manila',
+            'employment_type': 'Full-Time',
+            'experience_level': 'senior',
+            'salary_range': '$5000-$7000',
+            'remote_option': True,
+            'required_skills': ['Python', 'Django'],
+            'preferred_skills': ['Docker'],
+            'responsibilities': ['Build APIs'],
+            'qualifications': ["Bachelor's degree"],
+            'education_requirements': ['Bachelor of Science in Computer Science'],
+            'certifications': ['AWS Certified'],
+            'benefits': ['Health insurance'],
+            'industries': ['Technology'],
+        }
+
+        with patch.object(parser, '_should_use_gemini', return_value=True):
+            with patch.object(parser, '_parse_with_gemini', return_value={}) as gemini_parser:
+                with patch.object(parser, '_should_use_groq', return_value=True):
+                    with patch.object(parser, '_parse_with_groq', return_value=groq_data) as groq_parser:
+                        profile = parser.parse_text('Hiring for a backend role supporting our Manila team.', filename='backend-role.txt')
+
+        gemini_parser.assert_called_once()
+        groq_parser.assert_called_once()
         self.assertEqual(profile.title, 'Backend Engineer')
         self.assertEqual(profile.reporting_to, 'Engineering Manager')
         self.assertEqual(profile.company, 'Example Corp')

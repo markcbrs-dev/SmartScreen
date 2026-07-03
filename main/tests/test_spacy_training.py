@@ -353,7 +353,7 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertNotIn('keyword_score', result.breakdown)
         self.assertIn('Python', result.matching_skills)
 
-    def test_matcher_caps_overall_score_when_resume_lacks_most_required_skills(self):
+    def test_matcher_keeps_uncapped_weighted_score_when_resume_lacks_most_required_skills(self):
         resume = ResumeProfile(
             raw_text='Senior developer with Python, leadership, architecture, and stakeholder management.',
             skills=['Python', 'Leadership', 'Communication'],
@@ -373,7 +373,7 @@ class MatcherClassifierHookTests(SimpleTestCase):
             result = ResumeJobMatcher().match_resume_to_job(resume, job)
 
         self.assertLessEqual(result.skill_match_score, 0.3)
-        self.assertLessEqual(result.overall_score, 0.3)
+        self.assertGreater(result.overall_score, 0.5)
 
     def test_matcher_treats_missing_job_skills_as_neutral_not_perfect(self):
         resume = ResumeProfile(
@@ -500,7 +500,7 @@ class MatcherClassifierHookTests(SimpleTestCase):
 
         self.assertEqual(score, 0.3)
 
-    def test_calculate_education_match_scores_high_school_only_as_sixty_percent(self):
+    def test_calculate_education_match_scores_high_school_only_as_fifty_percent(self):
         matcher = ResumeJobMatcher()
 
         score = matcher.calculate_education_match(
@@ -508,18 +508,55 @@ class MatcherClassifierHookTests(SimpleTestCase):
             ['Bachelor of Science in Computer Science'],
         )
 
-        self.assertEqual(score, 0.6)
+        self.assertEqual(score, 0.5)
+
+    def test_calculate_education_match_scores_senior_high_school_as_seventy_percent(self):
+        matcher = ResumeJobMatcher()
+
+        score = matcher.calculate_education_match(
+            ['Senior-Highschool Graduate'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(score, 0.7)
 
     def test_calculate_education_match_uses_same_tiers_when_jd_has_no_requirement(self):
         matcher = ResumeJobMatcher()
 
         elementary_score = matcher.calculate_education_match(['Elementary Graduate'], [])
         high_school_score = matcher.calculate_education_match(['High School Graduate'], [])
+        senior_high_school_score = matcher.calculate_education_match(['Senior High School Graduate'], [])
+        current_college_score = matcher.calculate_education_match(
+            ['BS in Computer Science', 'Expected Graduation 2027'],
+            [],
+        )
         college_score = matcher.calculate_education_match(['Bachelor of Science in Information Technology'], [])
 
         self.assertEqual(elementary_score, 0.3)
-        self.assertEqual(high_school_score, 0.6)
+        self.assertEqual(high_school_score, 0.5)
+        self.assertEqual(senior_high_school_score, 0.7)
+        self.assertEqual(current_college_score, 0.8)
         self.assertEqual(college_score, 1.0)
+
+    def test_calculate_education_match_scores_current_college_as_eighty_percent(self):
+        matcher = ResumeJobMatcher()
+
+        score = matcher.calculate_education_match(
+            ['Bachelor of Science in Computer Science', 'Expected Graduation - 2027'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(score, 0.8)
+
+    def test_calculate_education_match_keeps_college_graduate_at_full_score(self):
+        matcher = ResumeJobMatcher()
+
+        score = matcher.calculate_education_match(
+            ['Bachelor of Science in Information Technology', 'Graduated 2024'],
+            ['Bachelor of Science in Computer Science'],
+        )
+
+        self.assertEqual(score, 1.0)
 
     def test_matcher_includes_education_breakdown_when_jd_has_no_requirement(self):
         resume = ResumeProfile(

@@ -618,6 +618,11 @@ def serialize_match_result(result, *, matched_job=None, recommendation_job=None,
         'overall_score': round(result.overall_score * 100),  # Convert 0.0-1.0 float → 0-100 integer for display
         'matching_skills': result.matching_skills[:8],        # Limit to 8 for dashboard display; increase if needed
         'missing_skills': result.missing_skills[:8],          # Limit to 8 for dashboard display; increase if needed
+        'raw_component_scores': {
+            'skill_score': round(result.skill_match_score * 100),
+            'experience_score': round(result.experience_match_score * 100),
+            'education_score': round(result.education_match_score * 100),
+        },
         'breakdown': {
             key: round(value * 100)                           # Each component score as 0-100 integer
             for key, value in result.breakdown.items()

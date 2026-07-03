@@ -117,6 +117,10 @@ class ResumeJobMatcher:
             'grade school': 0,
             'primary school': 0,
             'high school': 1,
+            'senior high school': 1.4,
+            'senior highschool': 1.4,
+            'senior-highschool': 1.4,
+            'senior high': 1.4,
             'associate': 2,
             'diploma': 2,
             'bachelor': 3,
@@ -169,23 +173,6 @@ class ResumeJobMatcher:
         ]
 
         overall_score = self._calculate_weighted_score(components)
-
-        # Graduated skill ceiling: prevents experience, education, and keyword
-        # components from padding a score when the candidate matches only a
-        # minority of the required skills.
-        #
-        # Formula: ceiling = max(0.20, skill_score × 0.5 + 0.15)
-        #   skill_score = 0.00 → ceiling = 0.20
-        #   skill_score = 0.20 → ceiling = 0.25
-        #   skill_score = 0.30 → ceiling = 0.30
-        #   skill_score = 0.40 → ceiling = 0.35
-        #   skill_score ≥ 0.50 → no ceiling applied (half or more skills matched)
-        #
-        # This keeps one- or two-skill matches from landing too high just because
-        # experience and education happen to align well.
-        if skill_known and skill_score < 0.5 and (effective_required or effective_preferred):
-            skill_ceiling = max(0.20, skill_score * 0.5 + 0.15)
-            overall_score = min(overall_score, skill_ceiling)
 
         breakdown = self._calculate_contribution_breakdown(components, overall_score)
 
@@ -384,11 +371,16 @@ class ResumeJobMatcher:
         return resume_score / max(job_score, 1)  # Partial credit proportional to how close they are
 
     def calculate_education_match(self, resume_education: Iterable[str], education_requirements: Iterable[str]) -> float:
-        resume_level = self._estimate_education_level(resume_education, default=0)
+        education_lines = list(resume_education or [])
+        resume_level = self._estimate_education_level(education_lines, default=0)
         if resume_level <= 0:
-            return 0.3 if any(line.strip() for line in resume_education) else 0.0
-        if resume_level == 1:
-            return 0.6
+            return 0.3 if any(line.strip() for line in education_lines) else 0.0
+        if resume_level < 1.4:
+            return 0.5
+        if resume_level < 2:
+            return 0.7
+        if self._is_currently_in_college(education_lines, resume_level):
+            return 0.8
         return 1.0
 
     def calculate_keyword_similarity(self, resume_text: str, job_text: str) -> float:
@@ -486,11 +478,44 @@ class ResumeJobMatcher:
                     best_score = max(best_score, score)
         return best_score
 
-    def _estimate_education_level(self, education_lines: Iterable[str], default: int = 0) -> int:
+    def _estimate_education_level(self, education_lines: Iterable[str], default: float = 0) -> float:
         best_score = default
         for line in education_lines:
-            lower_line = line.lower()
+            lower_line = line.lower().replace('-', ' ')
             for label, score in self.education_mapping.items():
-                if label in lower_line:
+                if label.replace('-', ' ') in lower_line:
                     best_score = max(best_score, score)
         return best_score
+
+    def _is_currently_in_college(self, education_lines: Iterable[str], education_level: float) -> bool:
+        if education_level < 3:
+            return False
+
+        normalized_lines = [line.lower().replace('-', ' ') for line in education_lines if isinstance(line, str) and line.strip()]
+        if not normalized_lines:
+            return False
+
+        combined_text = ' '.join(normalized_lines)
+        college_markers = ('bachelor', 'bs ', 'b.s.', 'ab ', 'associate', 'college', 'university', 'undergraduate')
+        ongoing_markers = (
+            'expected graduation',
+            'expected to graduate',
+            'graduating',
+            'currently enrolled',
+            'present',
+            'ongoing',
+            'undergraduate',
+            'in progress',
+        )
+        completed_markers = (
+            'graduated',
+            'graduate of',
+            'earned',
+            'completed',
+            'degree awarded',
+        )
+
+        has_college_marker = any(marker in combined_text for marker in college_markers)
+        has_ongoing_marker = any(marker in combined_text for marker in ongoing_markers)
+        has_completed_marker = any(marker in combined_text for marker in completed_markers)
+        return has_college_marker and has_ongoing_marker and not has_completed_marker
