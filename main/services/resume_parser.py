@@ -145,7 +145,7 @@ class ResumeParser:
                     self._first_resume_parser_pro_value(pro_data.get('phone_number'))
                 )
         gemini_data = {}
-        if self._should_use_gemini_name_extraction(raw_text):
+        if self._should_use_gemini(raw_text):
             gemini_data = self._parse_with_gemini(raw_text, filename=filename)
         profile.full_name = self._select_best_full_name(
             self._first_resume_parser_pro_value(gemini_data.get('full_name')),
@@ -162,11 +162,6 @@ class ResumeParser:
             profile.full_name = filename_name
         if gemini_data:
             self._merge_gemini_profile(profile, gemini_data)
-        elif self._should_use_gemini(profile):
-            self._merge_gemini_profile(
-                profile,
-                self._parse_with_gemini(raw_text, filename=filename),
-            )
         return profile
 
     def _should_use_resume_parser_pro(
@@ -289,21 +284,7 @@ class ResumeParser:
             if hasattr(file_obj, 'seek'):
                 file_obj.seek(0)
 
-    def _should_use_gemini(self, profile: ResumeProfile) -> bool:
-        if not profile.raw_text.strip():
-            return False
-        if self._get_gemini_client() is None:
-            return False
-        return any((
-            not profile.full_name,
-            not profile.email,
-            not profile.phone,
-            not profile.skills,
-            not profile.education,
-            not profile.experience,
-        ))
-
-    def _should_use_gemini_name_extraction(self, text: str) -> bool:
+    def _should_use_gemini(self, text: str) -> bool:
         if not text.strip():
             return False
         return self._get_gemini_client() is not None

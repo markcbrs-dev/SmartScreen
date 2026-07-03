@@ -8,9 +8,15 @@ It produces a JobMatchResult with an overall_score (0.0–1.0) and a breakdown.
 
 SCORING WEIGHTS
 ---------------
-    Skill match       50%  — keyword/semantic overlap of resume skills vs. JD skills
-    Experience match  30%  — estimated experience level vs. JD requirement
-    Education match   20%  — estimated education level vs. JD requirement
+        Tech jobs:
+            Skill match       50%  — keyword/semantic overlap of resume skills vs. JD skills
+            Experience match  30%  — estimated experience level vs. JD requirement
+            Education match   20%  — estimated education level vs. JD requirement
+
+        Non-tech jobs:
+            Skill match       30%
+            Experience match  50%
+            Education match   20%
 
 Only these three factors contribute to the final match score.
 
@@ -143,10 +149,23 @@ class ResumeJobMatcher:
         experience_score = self.calculate_experience_match(resume.experience, normalized_experience_level)
         education_score = self.calculate_education_match(resume.education, job.education_requirements)
 
+        if job_profile_type == 'non_tech':
+            component_weights = {
+                'skill_score': 0.30,
+                'experience_score': 0.50,
+                'education_score': 0.20,
+            }
+        else:
+            component_weights = {
+                'skill_score': 0.50,
+                'experience_score': 0.30,
+                'education_score': 0.20,
+            }
+
         components = [
-            ('skill_score', skill_score if skill_known else None, 0.50),
-            ('experience_score', experience_score if experience_known else None, 0.30),
-            ('education_score', education_score, 0.20),
+            ('skill_score', skill_score if skill_known else None, component_weights['skill_score']),
+            ('experience_score', experience_score if experience_known else None, component_weights['experience_score']),
+            ('education_score', education_score, component_weights['education_score']),
         ]
 
         overall_score = self._calculate_weighted_score(components)

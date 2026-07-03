@@ -439,6 +439,32 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertGreaterEqual(result.skill_match_score, 0.7)
         self.assertGreaterEqual(result.overall_score, 0.65)
 
+    def test_matcher_uses_30_50_20_weighting_for_non_tech_jobs(self):
+        resume = ResumeProfile(
+            raw_text='Experienced front desk associate with guest support background.',
+            skills=['Guest Service'],
+            education=['Associate Degree'],
+            experience=['Front desk associate with 4 years of experience'],
+        )
+        job = JobProfile(
+            title='Front Desk Associate',
+            raw_text='Guest service reception hotel operations',
+            required_skills=['Guest Service'],
+            preferred_skills=[],
+            experience_level='mid level',
+        )
+
+        with patch.object(ResumeJobMatcher, '_classify_job_profile', return_value='non_tech'):
+            with patch.object(ResumeJobMatcher, 'calculate_skill_match', return_value=(0.6, ['Guest Service'], [])):
+                with patch.object(ResumeJobMatcher, 'calculate_experience_match', return_value=0.8):
+                    with patch.object(ResumeJobMatcher, 'calculate_education_match', return_value=1.0):
+                        result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertEqual(result.overall_score, 0.78)
+        self.assertEqual(result.breakdown['skill_score'], 0.18)
+        self.assertEqual(result.breakdown['experience_score'], 0.4)
+        self.assertEqual(result.breakdown['education_score'], 0.2)
+
     def test_get_embedding_model_is_disabled_by_default_for_fast_requests(self):
         original_flag = matcher_module.ENABLE_SEMANTIC_MATCHING
         original_model = matcher_module._embedding_model
