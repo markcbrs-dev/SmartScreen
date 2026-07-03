@@ -40,7 +40,6 @@ PRIVATE HELPERS (text rendering — not views)
 """
 
 from django.shortcuts import get_object_or_404, render, redirect
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
@@ -57,7 +56,6 @@ import os
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.password_validation import validate_password as _validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.core.validators import EmailValidator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from .services.job_parser import JobDescriptionParser
@@ -104,40 +102,6 @@ from .services import (
     update_applicant_from_resume_profile,
     update_job_from_profile,
 )
-
-
-def _build_applicant_follow_up_email(applicant: Applicant) -> tuple[str, str]:
-    position = (applicant.position or '').strip() or 'Applicant'
-    first_name = (applicant.first_name or '').strip() or applicant.get_full_name() or 'Applicant'
-    subject = f'Application Follow-up - {position}'
-    body = (
-        f'Dear {first_name},\n\n'
-        f'We would like to connect with you regarding your application for the {position} position.\n\n'
-        'Please reply to this email to confirm your availability.\n\n'
-        'Thank you,\n'
-        'SmartScreen HR Team'
-    )
-    return subject, body
-
-
-def _send_applicant_email_message(request, applicant: Applicant, *, subject: str | None = None, body: str | None = None) -> bool:
-    if not applicant.email:
-        messages.error(request, 'This applicant does not have an email address on file.')
-        return False
-
-    default_subject, default_body = _build_applicant_follow_up_email(applicant)
-    final_subject = (subject or '').strip() or default_subject
-    final_body = (body or '').strip() or default_body
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or getattr(settings, 'EMAIL_HOST_USER', '') or request.user.email or 'no-reply@smartscreen.local'
-
-    try:
-        send_mail(final_subject, final_body, from_email, [applicant.email], fail_silently=False)
-    except Exception:
-        messages.error(request, 'Unable to send the email. Check the configured email settings and try again.')
-        return False
-
-    messages.success(request, f'Email sent to {applicant.email}.')
-    return True
 
 
 # -----------------------------------------------------------------------
@@ -839,21 +803,6 @@ def dashboard(request):
                 messages.success(request, f'{applicant_name} was removed.')
             return redirect_to_dashboard(redirect_panel)
 
-        if action == 'send_applicant_email':
-            applicant_id = request.POST.get('applicant_id', '').strip()
-            redirect_panel = request.POST.get('redirect_panel', 'interview').strip()
-            applicant = Applicant.objects.filter(id=applicant_id).first() if applicant_id else None
-            if applicant is None:
-                messages.error(request, 'Applicant not found.')
-            else:
-                _send_applicant_email_message(
-                    request,
-                    applicant,
-                    subject=request.POST.get('email_subject', ''),
-                    body=request.POST.get('email_body', ''),
-                )
-            return redirect_to_dashboard(redirect_panel)
-
         # Move an applicant to a new status (e.g. NEW → INTERVIEW).
         # The status value must be one of Applicant.STATUS_CHOICES.
         # Redirects back to the panel specified by 'redirect_panel' (defaults to 'dashboard').
@@ -990,12 +939,6 @@ def audit_log_view(request):
 def applicant_detail(request, applicant_id):
     applicant = get_object_or_404(Applicant.objects.select_related('applied_job'), id=applicant_id)
 
-    if request.method == 'POST':
-        action = request.POST.get('action', '').strip()
-        if action == 'send_applicant_email':
-            _send_applicant_email_message(request, applicant)
-            return redirect('applicant_detail', applicant_id=applicant.id)
-
     applicant, _ = refresh_applicant_match(applicant, get_active_job_descriptions())
     applicant.resume_download_url = None
     applicant.resume_preview_url = None
@@ -1061,7 +1004,6 @@ def applicant_detail(request, applicant_id):
         'resume_name': resume_name,
         'resume_extension': resume_extension,
         'resume_is_pdf': resume_extension == '.pdf',
-        'contact_email_subject': _build_applicant_follow_up_email(applicant)[0],
         'match_breakdown': match_breakdown,
         'matching_skills': match_notes.get('matching_skills', []),
         'missing_skills': match_notes.get('missing_skills', []),
