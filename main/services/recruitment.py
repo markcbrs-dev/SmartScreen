@@ -358,7 +358,7 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
         if not isinstance(breakdown, dict) or not breakdown:
             return False
 
-        allowed_keys = {'skill_score', 'experience_score', 'education_score'}
+        allowed_keys = {'skill_score', 'experience_score', 'education_score', 'certification_score'}
         if any(key not in allowed_keys for key in breakdown):
             return False
 
@@ -630,6 +630,8 @@ def serialize_match_result(result, *, matched_job=None, recommendation_job=None,
         'location_match': result.location_match,
         'remote_match': result.remote_match,
     }
+    if result.certification_match_score is not None:
+        payload['raw_component_scores']['certification_score'] = round(result.certification_match_score * 100)
     if matched_job is not None:
         payload['matched_job'] = {
             'job_id': matched_job.id,

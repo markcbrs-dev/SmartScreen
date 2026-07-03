@@ -86,6 +86,9 @@ class ApplicantFlowTests(TestCase):
 		self.assertNotContains(response, '<h3 class="section-title">Qualifications</h3>', html=False)
 		self.assertContains(response, 'Job Description')
 		self.assertNotContains(response, 'Current Job Description')
+		self.assertContains(response, 'Confirm Upload')
+		self.assertContains(response, 'Review your resume before submitting')
+		self.assertContains(response, 'Resume File')
 
 	def test_apply_page_uses_about_the_job_text_for_job_description(self):
 		replace_active_job_description(build_text_file(
@@ -1299,11 +1302,16 @@ class ResumeAccessTests(TestCase):
 		self.assertNotContains(response, 'Open Resume')
 		self.assertContains(response, reverse('applicant_resume_preview', args=[self.applicant.id]))
 		self.assertContains(response, 'Score Analysis')
+		self.assertContains(response, 'Detailed Breakdown')
+		self.assertContains(response, 'Raw Match')
+		self.assertContains(response, 'Weight')
+		self.assertContains(response, 'Contribution')
 		self.assertContains(response, 'Extracted Resume Text')
 		self.assertContains(response, 'All Job Position Scores')
 		self.assertContains(response, 'Python')
 		self.assertContains(response, 'Django')
-		self.assertContains(response, '78%')
+		self.assertContains(response, '79.5%')
+		self.assertContains(response, '19.5%')
 		self.assertContains(response, '20%')
 		self.assertContains(response, '40%')
 		self.assertContains(response, '20%')
@@ -1319,6 +1327,105 @@ class ResumeAccessTests(TestCase):
 		self.assertEqual(len(response.context['job_position_scores']), 1)
 		self.assertEqual(response.context['job_position_scores'][0]['job_title'], 'API Engineer')
 		self.assertEqual(response.context['job_position_scores'][0]['overall_score'], 72)
+		self.assertEqual(response.context['display_overall_score'], 79.5)
+
+	def test_applicant_detail_uses_fractional_weighted_scores_consistently(self):
+		self.client.force_login(self.staff_user)
+		self.applicant.match_notes = {
+			'overall_score': 37,
+			'raw_component_scores': {
+				'skill_score': 0,
+				'experience_score': 33,
+				'education_score': 100,
+			},
+			'breakdown': {
+				'skill_score': 0,
+				'experience_score': 33,
+				'education_score': 100,
+			},
+			'matching_skills': [],
+			'missing_skills': [],
+		}
+		self.applicant.save(update_fields=['match_notes'])
+
+		response = self.client.get(reverse('applicant_detail', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['match_breakdown']['skill_score'], 0)
+		self.assertEqual(response.context['match_breakdown']['experience_score'], 16.5)
+		self.assertEqual(response.context['match_breakdown']['education_score'], 20.0)
+		self.assertEqual(response.context['uncapped_component_total'], 36.5)
+		self.assertFalse(response.context['score_cap_applied'])
+		self.assertEqual(response.context['display_overall_score'], 36.5)
+		self.assertContains(response, '36.5%')
+		self.assertContains(response, '16.5%')
+
+	def test_applicant_detail_displays_certification_bonus_when_present(self):
+		self.client.force_login(self.staff_user)
+		self.applicant.match_notes = {
+			'overall_score': 57,
+			'raw_component_scores': {
+				'skill_score': 0,
+				'experience_score': 33,
+				'education_score': 100,
+				'certification_score': 100,
+			},
+			'breakdown': {
+				'skill_score': 0,
+				'experience_score': 17,
+				'education_score': 20,
+				'certification_score': 20,
+			},
+			'matching_skills': [],
+			'missing_skills': [],
+		}
+		self.applicant.save(update_fields=['match_notes'])
+
+		response = self.client.get(reverse('applicant_detail', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['match_breakdown']['certification_score'], 20.0)
+		self.assertEqual(response.context['uncapped_component_total'], 56.5)
+		self.assertEqual(response.context['display_overall_score'], 56.5)
+		self.assertContains(response, 'Certification Bonus')
+		self.assertContains(response, 'Certification is shown separately as a bonus')
+		self.assertContains(response, 'Shown as a bonus on top of the base score.')
+		self.assertContains(response, '56.5%')
+
+	def test_applicant_detail_caps_certification_bonus_total_at_one_hundred_percent(self):
+		self.client.force_login(self.staff_user)
+		self.applicant.match_notes = {
+			'overall_score': 100,
+			'raw_component_scores': {
+				'skill_score': 100,
+				'experience_score': 100,
+				'education_score': 100,
+				'certification_score': 100,
+			},
+			'breakdown': {
+				'skill_score': 30,
+				'experience_score': 50,
+				'education_score': 20,
+				'certification_score': 20,
+			},
+			'matching_skills': [],
+			'missing_skills': [],
+		}
+		self.applicant.save(update_fields=['match_notes'])
+
+		response = self.client.get(reverse('applicant_detail', args=[self.applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(response.context['score_cap_applied'])
+		self.assertEqual(response.context['display_overall_score'], 100.0)
+		self.assertEqual(response.context['uncapped_component_total'], 120.0)
+		self.assertAlmostEqual(sum(response.context['match_breakdown'].values()), 120.0, places=1)
+		self.assertEqual(response.context['match_breakdown']['skill_score'], 30.0)
+		self.assertEqual(response.context['match_breakdown']['experience_score'], 50.0)
+		self.assertEqual(response.context['match_breakdown']['education_score'], 20.0)
+		self.assertEqual(response.context['match_breakdown']['certification_score'], 20.0)
+		self.assertContains(response, 'The combined component total is capped when showing the final overall score.')
+		self.assertContains(response, '100%')
 
 	def test_applicant_resume_preview_requires_staff_login(self):
 		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))

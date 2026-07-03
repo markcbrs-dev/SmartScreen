@@ -56,6 +56,7 @@ from typing import Optional
 
 from .entities import JobProfile
 from .skills import (
+    extract_years_of_experience_counts,
     extract_canonical_skills,
     get_canonical_skills,
     normalize_education_entries,
@@ -697,9 +698,9 @@ class JobDescriptionParser:
                 return normalize_experience_level(item)
         # Fallback: infer level from years of experience mentioned in the JD
         # Modify the year thresholds here if the mapping feels off for your domain
-        years_match = re.search(r'(\d+)\s*[-+]?\s*years?\s*(?:of)?\s*experience', text, re.IGNORECASE)
-        if years_match:
-            years = int(years_match.group(1))
+        years_of_experience = extract_years_of_experience_counts(text)
+        if years_of_experience:
+            years = max(years_of_experience)
             if years <= 2:
                 return normalize_experience_level('entry level')
             if years <= 5:

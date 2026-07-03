@@ -528,6 +528,119 @@
       color:var(--ink-soft);
     }
 
+    .ss-confirm-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,0.44);
+      backdrop-filter:blur(3px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      z-index:1001;
+      opacity:0;
+      visibility:hidden;
+      pointer-events:none;
+      transition:opacity .18s ease, visibility .18s ease;
+    }
+
+    .ss-confirm-overlay.is-visible{
+      opacity:1;
+      visibility:visible;
+      pointer-events:auto;
+    }
+
+    .ss-confirm-card{
+      width:min(100%, 420px);
+      background:#fff;
+      border-radius:18px;
+      box-shadow:0 20px 45px rgba(15,23,42,0.18);
+      padding:26px 24px;
+      border:1px solid rgba(15,23,42,0.08);
+    }
+
+    .ss-confirm-eyebrow{
+      margin:0 0 8px;
+      color:var(--blue);
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:0.12em;
+      text-transform:uppercase;
+    }
+
+    .ss-confirm-title{
+      margin:0 0 8px;
+      color:var(--ink);
+      font-size:1.05rem;
+      font-weight:700;
+      line-height:1.4;
+    }
+
+    .ss-confirm-copy{
+      margin:0;
+      font-size:.94rem;
+      line-height:1.5;
+      color:var(--ink-soft);
+    }
+
+    .ss-confirm-summary{
+      margin:16px 0 0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .ss-confirm-item{
+      padding:12px 14px;
+      border-radius:14px;
+      background:#f8fbff;
+      border:1px solid rgba(15,23,42,0.08);
+    }
+
+    .ss-confirm-label{
+      display:block;
+      margin-bottom:4px;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:700;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+    }
+
+    .ss-confirm-value{
+      color:var(--ink);
+      font-size:13px;
+      font-weight:600;
+      line-height:1.45;
+      word-break:break-word;
+    }
+
+    .ss-confirm-actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+      margin-top:18px;
+    }
+
+    .ss-confirm-btn{
+      border:none;
+      border-radius:10px;
+      padding:10px 14px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:12px;
+    }
+
+    .ss-confirm-btn-secondary{
+      background:#eef4fb;
+      color:#1f4f86;
+    }
+
+    .ss-confirm-btn-primary{
+      background:var(--blue-dark);
+      color:#fff;
+    }
+
     @keyframes ss-loading-spin{
       to{ transform:rotate(360deg); }
     }
@@ -567,6 +680,27 @@
         <div class="ss-loading-spinner" aria-hidden="true"></div>
         <p class="ss-loading-title">Uploading resume</p>
         <p class="ss-loading-copy">Please wait.</p>
+      </div>
+    </div>
+    <div class="ss-confirm-overlay" id="resumeUploadConfirmOverlay" aria-hidden="true">
+      <div class="ss-confirm-card" role="dialog" aria-modal="true" aria-labelledby="resumeUploadConfirmTitle" aria-describedby="resumeUploadConfirmCopy">
+        <p class="ss-confirm-eyebrow">Confirm Upload</p>
+        <h3 class="ss-confirm-title" id="resumeUploadConfirmTitle">Review your resume before submitting</h3>
+        <p class="ss-confirm-copy" id="resumeUploadConfirmCopy">Make sure you are uploading the correct file for the selected target position.</p>
+        <div class="ss-confirm-summary">
+          <div class="ss-confirm-item">
+            <span class="ss-confirm-label">Target Position</span>
+            <span class="ss-confirm-value" id="resumeUploadConfirmJob">-</span>
+          </div>
+          <div class="ss-confirm-item">
+            <span class="ss-confirm-label">Resume File</span>
+            <span class="ss-confirm-value" id="resumeUploadConfirmFile">-</span>
+          </div>
+        </div>
+        <div class="ss-confirm-actions">
+          <button type="button" class="ss-confirm-btn ss-confirm-btn-secondary" id="resumeUploadConfirmCancel">Cancel</button>
+          <button type="button" class="ss-confirm-btn ss-confirm-btn-primary" id="resumeUploadConfirmProceed">Upload Resume</button>
+        </div>
       </div>
     </div>
     <div id="applicantLayout" class="layout{% if not request.POST.job_id %} layout-collapsed{% endif %}">
@@ -700,7 +834,13 @@
     const descriptionSection = document.getElementById('jobDescriptionSection');
     const resumeUploadLoadingOverlay = document.getElementById('resumeUploadLoadingOverlay');
     const resumeSubmitButton = document.getElementById('resumeSubmitButton');
+    const resumeUploadConfirmOverlay = document.getElementById('resumeUploadConfirmOverlay');
+    const resumeUploadConfirmFile = document.getElementById('resumeUploadConfirmFile');
+    const resumeUploadConfirmJob = document.getElementById('resumeUploadConfirmJob');
+    const resumeUploadConfirmCancel = document.getElementById('resumeUploadConfirmCancel');
+    const resumeUploadConfirmProceed = document.getElementById('resumeUploadConfirmProceed');
     let jobDetailsData = JSON.parse(document.getElementById('jobDetailsData').textContent);
+    let resumeUploadConfirmResolver = null;
 
     function showApplicantLoadingOverlay() {
       if (resumeSubmitButton) {
@@ -713,6 +853,68 @@
         resumeUploadLoadingOverlay.setAttribute('aria-hidden', 'false');
       }
     }
+
+    function hideResumeUploadConfirm() {
+      if (!resumeUploadConfirmOverlay) {
+        return;
+      }
+
+      resumeUploadConfirmOverlay.classList.remove('is-visible');
+      resumeUploadConfirmOverlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function resolveResumeUploadConfirm(confirmed) {
+      hideResumeUploadConfirm();
+      if (resumeUploadConfirmResolver) {
+        resumeUploadConfirmResolver(Boolean(confirmed));
+        resumeUploadConfirmResolver = null;
+      }
+    }
+
+    function showResumeUploadConfirm(fileName, jobLabel) {
+      if (!resumeUploadConfirmOverlay || !resumeUploadConfirmFile || !resumeUploadConfirmJob) {
+        return Promise.resolve(true);
+      }
+
+      resumeUploadConfirmFile.textContent = fileName || '-';
+      resumeUploadConfirmJob.textContent = jobLabel || '-';
+      resumeUploadConfirmOverlay.classList.add('is-visible');
+      resumeUploadConfirmOverlay.setAttribute('aria-hidden', 'false');
+
+      if (resumeUploadConfirmProceed) {
+        resumeUploadConfirmProceed.focus();
+      }
+
+      return new Promise(function (resolve) {
+        resumeUploadConfirmResolver = resolve;
+      });
+    }
+
+    if (resumeUploadConfirmCancel) {
+      resumeUploadConfirmCancel.addEventListener('click', function () {
+        resolveResumeUploadConfirm(false);
+      });
+    }
+
+    if (resumeUploadConfirmProceed) {
+      resumeUploadConfirmProceed.addEventListener('click', function () {
+        resolveResumeUploadConfirm(true);
+      });
+    }
+
+    if (resumeUploadConfirmOverlay) {
+      resumeUploadConfirmOverlay.addEventListener('click', function (event) {
+        if (event.target === resumeUploadConfirmOverlay) {
+          resolveResumeUploadConfirm(false);
+        }
+      });
+    }
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && resumeUploadConfirmOverlay && resumeUploadConfirmOverlay.classList.contains('is-visible')) {
+        resolveResumeUploadConfirm(false);
+      }
+    });
 
     uploadBtn.addEventListener('click', function () {
       resumeInput.click();
@@ -925,7 +1127,7 @@
     }
 
     if (profileForm) {
-      profileForm.addEventListener('submit', function () {
+      profileForm.addEventListener('submit', async function (event) {
         if (!resumeInput || !resumeInput.files || resumeInput.files.length === 0) {
           return;
         }
@@ -933,7 +1135,16 @@
           return;
         }
 
+        const selectedFile = resumeInput.files[0];
+        const selectedJobLabel = jobIdSelect.options[jobIdSelect.selectedIndex] ? jobIdSelect.options[jobIdSelect.selectedIndex].text : 'the selected position';
+        event.preventDefault();
+        const confirmed = await showResumeUploadConfirm(selectedFile.name, selectedJobLabel);
+        if (!confirmed) {
+          return;
+        }
+
         showApplicantLoadingOverlay();
+        profileForm.submit();
       });
     }
   </script>

@@ -110,6 +110,27 @@ _EXPERIENCE_LEVEL_ALIASES = {
     'c-level': ('c-level', 'c suite', 'executive', 'cto', 'cio', 'ceo'),
 }
 
+_NUMBER_WORD_VALUES = {
+    'one': 1,
+    'two': 2,
+    'three': 3,
+    'four': 4,
+    'five': 5,
+    'six': 6,
+    'seven': 7,
+    'eight': 8,
+    'nine': 9,
+    'ten': 10,
+    'eleven': 11,
+    'twelve': 12,
+}
+
+_YEAR_COUNT_PATTERN = re.compile(
+    r'\b(?:(?P<word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)|(?P<digit>\d+))'
+    r'(?:\s*\(\s*(?P<paren>\d+)\s*\))?\s*\+?\s*(?:years?|yrs?)\b',
+    re.IGNORECASE,
+)
+
 _EMPLOYMENT_TYPE_ALIASES = {
     'Full-Time / Part-Time': (
         'full-time or part-time',
@@ -258,6 +279,25 @@ def normalize_location_text(value: Optional[str]) -> str:
     cleaned = normalize_whitespace(value)
     cleaned = re.sub(r'\s*,\s*', ', ', cleaned)
     return cleaned.strip(' ,')
+
+
+def extract_years_of_experience_counts(value: Optional[str]) -> list[int]:
+    counts = []
+    seen = set()
+    for match in _YEAR_COUNT_PATTERN.finditer(normalize_whitespace(value)):
+        paren_value = match.group('paren')
+        digit_value = match.group('digit')
+        word_value = match.group('word')
+        if paren_value:
+            years = int(paren_value)
+        elif digit_value:
+            years = int(digit_value)
+        else:
+            years = _NUMBER_WORD_VALUES.get((word_value or '').lower(), 0)
+        if years > 0 and years not in seen:
+            seen.add(years)
+            counts.append(years)
+    return counts
 
 
 def normalize_experience_level(value: Optional[str]) -> Optional[str]:

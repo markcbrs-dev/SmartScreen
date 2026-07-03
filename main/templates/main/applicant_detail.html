@@ -26,7 +26,7 @@
   </div>
   <div class="text-md-end">
     <div><span class="badge text-bg-primary">{{ applicant.status }}</span></div>
-    <div class="fs-4 fw-semibold mt-2">{{ applicant.match_notes.overall_score|default:applicant.match_score }}%</div>
+    <div class="fs-4 fw-semibold mt-2">{{ display_overall_score|floatformat:"-1" }}%</div>
     <div class="text-muted small">Overall match score</div>
   </div>
 </div>
@@ -73,25 +73,84 @@
     <div class="card shadow-sm mb-4">
       <div class="card-body">
         <h2 class="h5 mb-3">Score Analysis</h2>
+        {% if match_breakdown.certification_score is not None %}
+        <p class="text-muted small mb-3">Skill, experience, and education make up the base score. Certification is shown separately as a bonus and may push the component total above 100%, while the final overall score stays capped at 100%.</p>
+        {% endif %}
         <div class="row g-3 mb-3">
-          <div class="col-sm-4">
+          <div class="col-sm-6 col-lg-3">
             <div class="border rounded p-3 h-100">
               <div class="text-muted small">Skill Score</div>
-              <div class="fs-5 fw-semibold">{{ match_breakdown.skill_score }}%</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.skill_score|floatformat:"-1" }}%</div>
             </div>
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-6 col-lg-3">
             <div class="border rounded p-3 h-100">
               <div class="text-muted small">Experience Score</div>
-              <div class="fs-5 fw-semibold">{{ match_breakdown.experience_score }}%</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.experience_score|floatformat:"-1" }}%</div>
             </div>
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-6 col-lg-3">
             <div class="border rounded p-3 h-100">
               <div class="text-muted small">Education Score</div>
-              <div class="fs-5 fw-semibold">{{ match_breakdown.education_score }}%</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.education_score|floatformat:"-1" }}%</div>
             </div>
           </div>
+          {% if match_breakdown.certification_score is not None %}
+          <div class="col-sm-6 col-lg-3">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small">Certification Bonus</div>
+              <div class="fs-5 fw-semibold">{{ match_breakdown.certification_score|floatformat:"-1" }}%</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <h3 class="h6">Detailed Breakdown</h3>
+          <div class="table-responsive border rounded">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Component</th>
+                  <th scope="col" class="text-end">Raw Match</th>
+                  <th scope="col" class="text-end">Weight</th>
+                  <th scope="col" class="text-end">Contribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in score_analysis_rows %}
+                <tr>
+                  <td>
+                    <div class="fw-medium">{{ row.label }}</div>
+                    {% if row.is_bonus %}
+                    <div class="text-muted small">Shown as a bonus on top of the base score.</div>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">{{ row.raw_score|floatformat:"-1" }}%</td>
+                  <td class="text-end">{{ row.weight|floatformat:"-1" }}%</td>
+                  <td class="text-end">{{ row.contribution|floatformat:"-1" }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot class="table-light">
+                <tr>
+                  <th scope="row">Component Total</th>
+                  <td></td>
+                  <td></td>
+                  <th class="text-end">{{ uncapped_component_total|floatformat:"-1" }}%</th>
+                </tr>
+                <tr>
+                  <th scope="row">Final Overall Score</th>
+                  <td></td>
+                  <td></td>
+                  <th class="text-end">{{ display_overall_score|floatformat:"-1" }}%</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {% if score_cap_applied %}
+          <p class="text-muted small mt-2 mb-0">The combined component total is capped when showing the final overall score.</p>
+          {% endif %}
         </div>
 
         <div class="mb-4">

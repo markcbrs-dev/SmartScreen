@@ -1036,10 +1036,38 @@ def applicant_detail(request, applicant_id):
         'experience_score': 50,
         'education_score': 20,
     }
-    match_breakdown = {
-        key: round((raw_component_breakdown.get(key, 0) * weight) / 100)
+    certification_score = raw_component_scores.get('certification_score', raw_breakdown.get('certification_score'))
+    if isinstance(certification_score, (int, float)):
+        raw_component_breakdown['certification_score'] = certification_score
+        score_weights['certification_score'] = 20
+    weighted_component_breakdown = {
+        key: (raw_component_breakdown.get(key, 0) * weight) / 100
         for key, weight in score_weights.items()
     }
+    score_labels = {
+        'skill_score': 'Skill Score',
+        'experience_score': 'Experience Score',
+        'education_score': 'Education Score',
+        'certification_score': 'Certification Bonus',
+    }
+    score_analysis_rows = [
+        {
+            'key': key,
+            'label': score_labels.get(key, key.replace('_', ' ').title()),
+            'raw_score': round(raw_component_breakdown.get(key, 0), 1),
+            'weight': weight,
+            'contribution': round(weighted_component_breakdown.get(key, 0), 1),
+            'is_bonus': key == 'certification_score',
+        }
+        for key, weight in score_weights.items()
+        if key in raw_component_breakdown
+    ]
+    match_breakdown = {
+        key: round(value, 1)
+        for key, value in weighted_component_breakdown.items()
+    }
+    uncapped_component_total = round(sum(weighted_component_breakdown.values()), 1)
+    display_overall_score = round(min(100, uncapped_component_total), 1)
     matched_job = match_notes.get('matched_job', {}) if isinstance(match_notes.get('matched_job'), dict) else {}
     matched_job_id = matched_job.get('job_id') if isinstance(matched_job.get('job_id'), int) else None
     job_position_scores = match_notes.get('all_job_scores', []) if isinstance(match_notes.get('all_job_scores'), list) else []
@@ -1089,7 +1117,11 @@ def applicant_detail(request, applicant_id):
         'resume_name': resume_name,
         'resume_extension': resume_extension,
         'resume_is_pdf': resume_extension == '.pdf',
+        'display_overall_score': display_overall_score,
+        'uncapped_component_total': uncapped_component_total,
+        'score_cap_applied': uncapped_component_total > 100,
         'match_breakdown': match_breakdown,
+        'score_analysis_rows': score_analysis_rows,
         'matching_skills': match_notes.get('matching_skills', []),
         'missing_skills': match_notes.get('missing_skills', []),
         'recommendation': match_notes.get('recommendation', {}),

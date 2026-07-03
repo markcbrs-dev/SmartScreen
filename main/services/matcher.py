@@ -42,11 +42,13 @@ DEBUG
 
 import os
 import re
+from datetime import date
 from typing import Iterable, Optional
 
 from .entities import JobMatchResult, JobProfile, ResumeProfile
 from .skills import (
     canonicalize_skill_list,
+    extract_years_of_experience_counts,
     extract_canonical_skills,
     normalize_experience_level,
     normalize_location_text,
@@ -89,6 +91,91 @@ class ResumeJobMatcher:
         'human resources', 'manager', 'nurse', 'officer', 'operations', 'payroll', 'receptionist',
         'recruiter', 'recruitment', 'reservation', 'retail', 'sales', 'scheduler', 'secretary',
         'service crew', 'staff', 'store', 'supervisor', 'teacher', 'trainer', 'waiter', 'waitress',
+    }
+    _DIRECT_SERVICE_ROLE_HINTS = {
+        'attendant': 2,
+        'barista': 2,
+        'bartender': 2,
+        'cashier': 2,
+        'front desk': 2,
+        'guest service': 2,
+        'host': 2,
+        'hostess': 2,
+        'pool attendant': 2,
+        'reception': 2,
+        'receptionist': 2,
+        'room attendant': 2,
+        'server': 2,
+        'service crew': 2,
+        'waiter': 2,
+        'waitress': 2,
+    }
+    _YEAR_RANGE_PATTERN = re.compile(
+        r'\b(?P<start>19\d{2}|20\d{2})\s*(?:-|–|—|to)\s*(?P<end>present|current|now|19\d{2}|20\d{2})\b',
+        re.IGNORECASE,
+    )
+    _CERTIFICATION_BONUS_WEIGHT = 0.20
+    _ROLE_CERTIFICATION_ALIASES = {
+        'barista': (
+            'food and beverage services',
+            'barista training',
+            'coffee services',
+            'hospitality',
+            'tesda nc ii in barista',
+        ),
+        'bartender': (
+            'bartending',
+            'food and beverage services',
+            'hospitality management',
+            'hospitality',
+        ),
+        'bellman': (
+            'hospitality',
+            'hospitality management',
+            'hospitality services',
+        ),
+        'bussing person': (
+            'food and beverage services',
+            'hospitality',
+        ),
+        'busser': (
+            'food and beverage services',
+            'hospitality',
+        ),
+        'gym attendant': (
+            'physical education',
+            'fitness',
+            'sports science',
+        ),
+        'ingress and egress support': (
+            'hospitality',
+            'customer service',
+        ),
+        'kitchen helper': (
+            'cookery',
+            'culinary arts',
+            'food and beverage services',
+        ),
+        'massage therapist': (
+            'tesda nc ii in massage therapy',
+            'massage therapy',
+            'massage therapist certification',
+        ),
+        'mise en placer': (
+            'cookery',
+            'culinary arts',
+            'food preparation',
+        ),
+        'pool attendant': (
+            'first aid',
+            'cpr',
+            'lifeguard training',
+        ),
+        'room attendant': (
+            'housekeeping nc ii',
+            'hospitality services',
+            'housekeeping',
+        ),
     }
 
     def __init__(self):
@@ -152,6 +239,7 @@ class ResumeJobMatcher:
         )
         experience_score = self.calculate_experience_match(resume.experience, normalized_experience_level)
         education_score = self.calculate_education_match(resume.education, job.education_requirements)
+        certification_score = self.calculate_certification_match(resume, job)
 
         if job_profile_type == 'non_tech':
             component_weights = {
@@ -173,14 +261,19 @@ class ResumeJobMatcher:
         ]
 
         overall_score = self._calculate_weighted_score(components)
-
         breakdown = self._calculate_contribution_breakdown(components, overall_score)
+
+        if certification_score is not None:
+            certification_bonus = certification_score * self._CERTIFICATION_BONUS_WEIGHT
+            overall_score += certification_bonus
+            breakdown['certification_score'] = certification_bonus
 
         return JobMatchResult(
             overall_score=max(0.0, min(1.0, overall_score)),
             skill_match_score=skill_score,
             experience_match_score=experience_score,
             education_match_score=education_score,
+            certification_match_score=certification_score,
             keyword_match_score=0.0,
             location_match=False,
             remote_match=False,
@@ -450,32 +543,79 @@ class ResumeJobMatcher:
     def _normalize_text(self, text: str) -> str:
         return text.lower().strip()
 
+    def _build_certification_source_text(self, resume: ResumeProfile) -> str:
+        education_lines = [line for line in (resume.education or []) if isinstance(line, str) and line.strip()]
+        certification_markers = (
+            'certificate', 'certification', 'certified', 'tesda', 'nc i', 'nc ii', 'nc iii',
+            'training', 'diploma', 'course', 'cpr', 'first aid', 'lifeguard',
+        )
+        raw_lines = []
+        for line in (resume.raw_text or '').splitlines():
+            normalized = line.strip()
+            if normalized and any(marker in normalized.lower() for marker in certification_markers):
+                raw_lines.append(normalized)
+        return ' '.join(education_lines + raw_lines).lower()
+
+    def calculate_certification_match(self, resume: ResumeProfile, job: JobProfile) -> Optional[float]:
+        normalized_title = self._normalize_text(job.title or '')
+        required_aliases = self._ROLE_CERTIFICATION_ALIASES.get(normalized_title)
+        if not required_aliases:
+            return None
+
+        source_text = self._build_certification_source_text(resume)
+        if not source_text:
+            return 0.0
+
+        return 1.0 if any(alias in source_text for alias in required_aliases) else 0.0
+
+    def _score_year_count(self, years: int) -> int:
+        if years <= 1:
+            return 1
+        if years <= 3:
+            return 2
+        if years <= 5:
+            return 3
+        if years <= 8:
+            return 4
+        return 5
+
+    def _extract_year_range_counts(self, text: str) -> list[int]:
+        counts = []
+        current_year = date.today().year
+        for match in self._YEAR_RANGE_PATTERN.finditer(text):
+            start_year = int(match.group('start'))
+            end_token = match.group('end').lower()
+            end_year = current_year if end_token in {'present', 'current', 'now'} else int(end_token)
+            if end_year >= start_year:
+                counts.append(max(1, end_year - start_year))
+        return counts
+
     def _estimate_experience_level(self, experience_lines: Iterable[str]) -> int:
         best_score = 1  # Default to entry-level (1) if no experience lines are found
-        year_pattern = re.compile(r'(\d+)\+?\s*(?:years?|yrs?)', re.IGNORECASE)
 
         for line in experience_lines:
             lower_line = line.lower()
+            found_tenure_signal = False
 
             # Try to read explicit year counts first ('5 years of experience' → score 3)
             # Edit these thresholds if the mapping doesn't match your domain's expectations
-            for match in year_pattern.findall(lower_line):
-                years = int(match)
-                if years <= 1:
-                    best_score = max(best_score, 1)
-                elif years <= 3:
-                    best_score = max(best_score, 2)
-                elif years <= 5:
-                    best_score = max(best_score, 3)
-                elif years <= 8:
-                    best_score = max(best_score, 4)
-                else:
-                    best_score = max(best_score, 5)
+            for years in extract_years_of_experience_counts(lower_line):
+                best_score = max(best_score, self._score_year_count(years))
+                found_tenure_signal = True
+
+            for years in self._extract_year_range_counts(lower_line):
+                best_score = max(best_score, self._score_year_count(years))
+                found_tenure_signal = True
 
             # Also match seniority label keywords ('senior developer' → score 3)
             for label, score in self.experience_mapping.items():
                 if label in lower_line:
                     best_score = max(best_score, score)
+
+            if not found_tenure_signal:
+                for role_hint, score in self._DIRECT_SERVICE_ROLE_HINTS.items():
+                    if role_hint in lower_line:
+                        best_score = max(best_score, score)
         return best_score
 
     def _estimate_education_level(self, education_lines: Iterable[str], default: float = 0) -> float:

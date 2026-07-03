@@ -63,6 +63,7 @@ class JobMatchResult:
     skill_match_score: float
     experience_match_score: float
     education_match_score: float
+    certification_match_score: Optional[float]
     keyword_match_score: float
     location_match: bool
     remote_match: bool

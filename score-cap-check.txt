@@ -1,0 +1,3 @@
+overall=1.0
+breakdown={'skill_score': 0.4716981132075471, 'experience_score': 0.28301886792452824, 'education_score': 0.056603773584905655, 'certification_score': 0.18867924528301885}
+sum=0.9999999999999999

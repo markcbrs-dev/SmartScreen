@@ -13,7 +13,7 @@ from docx.oxml.ns import qn
 from main.services.job_parser import JobDescriptionParser
 from main.services.matcher import ResumeJobMatcher
 from main.services.resume_parser import ResumeParser
-from main.services.skills import canonicalize_skill_list, get_skill_definitions
+from main.services.skills import canonicalize_skill_list, extract_canonical_skills, get_skill_definitions
 
 
 class StubNlp:
@@ -978,6 +978,18 @@ class JobDescriptionParserExtractionTests(SimpleTestCase):
         level = parser.extract_experience_level('Candidates must have 6 years of experience building backend systems.')
 
         self.assertEqual(level, 'senior')
+
+    def test_extract_experience_level_understands_written_years(self):
+        parser = JobDescriptionParser()
+
+        level = parser.extract_experience_level('Candidates must have at least three years of experience preparing beverages.')
+
+        self.assertEqual(level, 'mid level')
+
+    def test_skill_extraction_ignores_generic_reporting_alias(self):
+        extracted = extract_canonical_skills('Reporting to the area supervisor and coordinating shift handoffs.')
+
+        self.assertNotIn('Report Writing', extracted)
 
     def test_parse_docx_two_column_job_description_table(self):
         parser = JobDescriptionParser()

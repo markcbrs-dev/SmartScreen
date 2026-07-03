@@ -465,6 +465,82 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertEqual(result.breakdown['experience_score'], 0.4)
         self.assertEqual(result.breakdown['education_score'], 0.2)
 
+    def test_matcher_adds_certification_bonus_for_supported_hospitality_roles(self):
+        resume = ResumeProfile(
+            raw_text='TESDA NC II in Barista and Coffee Services, 2018',
+            skills=['Barista Preparation'],
+            education=['TESDA NC II in Barista and Coffee Services, 2018'],
+            experience=['Senior Barista with 6 years of experience'],
+        )
+        job = JobProfile(
+            title='Barista',
+            raw_text='Prepare beverages and maintain bar cleanliness',
+            required_skills=['Barista Preparation'],
+            preferred_skills=[],
+            experience_level='mid level',
+        )
+
+        with patch.object(ResumeJobMatcher, '_classify_job_profile', return_value='non_tech'):
+            with patch.object(ResumeJobMatcher, 'calculate_skill_match', return_value=(0.6, ['Barista Preparation'], [])):
+                with patch.object(ResumeJobMatcher, 'calculate_experience_match', return_value=0.8):
+                    with patch.object(ResumeJobMatcher, 'calculate_education_match', return_value=0.3):
+                        result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertEqual(result.certification_match_score, 1.0)
+        self.assertEqual(result.breakdown['certification_score'], 0.2)
+        self.assertEqual(result.overall_score, 0.84)
+
+    def test_matcher_caps_total_score_at_one_hundred_percent_when_certification_bonus_pushes_over(self):
+        resume = ResumeProfile(
+            raw_text='TESDA NC II in Barista and Coffee Services, 2018',
+            skills=['Barista Preparation'],
+            education=['TESDA NC II in Barista and Coffee Services, 2018'],
+            experience=['Senior Barista with 6 years of experience'],
+        )
+        job = JobProfile(
+            title='Barista',
+            raw_text='Prepare beverages and maintain bar cleanliness',
+            required_skills=['Barista Preparation'],
+            preferred_skills=[],
+            experience_level='mid level',
+        )
+
+        with patch.object(ResumeJobMatcher, '_classify_job_profile', return_value='non_tech'):
+            with patch.object(ResumeJobMatcher, 'calculate_skill_match', return_value=(1.0, ['Barista Preparation'], [])):
+                with patch.object(ResumeJobMatcher, 'calculate_experience_match', return_value=1.0):
+                    with patch.object(ResumeJobMatcher, 'calculate_education_match', return_value=1.0):
+                        result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertEqual(result.certification_match_score, 1.0)
+        self.assertEqual(result.overall_score, 1.0)
+    self.assertAlmostEqual(sum(result.breakdown.values()), 1.2)
+    self.assertEqual(result.breakdown['certification_score'], 0.2)
+
+    def test_matcher_leaves_jobs_without_certification_requirement_unchanged(self):
+        resume = ResumeProfile(
+            raw_text='Professional butler with guest service background.',
+            skills=['Guest Service'],
+            education=['Associate Degree'],
+            experience=['Butler with 5 years of experience'],
+        )
+        job = JobProfile(
+            title='Butler',
+            raw_text='Manage formal guest service.',
+            required_skills=['Guest Service'],
+            preferred_skills=[],
+            experience_level='mid level',
+        )
+
+        with patch.object(ResumeJobMatcher, '_classify_job_profile', return_value='non_tech'):
+            with patch.object(ResumeJobMatcher, 'calculate_skill_match', return_value=(0.6, ['Guest Service'], [])):
+                with patch.object(ResumeJobMatcher, 'calculate_experience_match', return_value=0.8):
+                    with patch.object(ResumeJobMatcher, 'calculate_education_match', return_value=1.0):
+                        result = ResumeJobMatcher().match_resume_to_job(resume, job)
+
+        self.assertIsNone(result.certification_match_score)
+        self.assertNotIn('certification_score', result.breakdown)
+        self.assertEqual(result.overall_score, 0.78)
+
     def test_get_embedding_model_is_disabled_by_default_for_fast_requests(self):
         original_flag = matcher_module.ENABLE_SEMANTIC_MATCHING
         original_model = matcher_module._embedding_model
@@ -489,6 +565,18 @@ class MatcherClassifierHookTests(SimpleTestCase):
         self.assertEqual(matcher._estimate_experience_level(['Built systems for 5 years']), 3)
         self.assertEqual(matcher._estimate_experience_level(['Led teams for 8 years']), 4)
         self.assertEqual(matcher._estimate_experience_level(['Directed programs for 10 years']), 5)
+
+    def test_estimate_experience_level_understands_written_years(self):
+        matcher = ResumeJobMatcher()
+
+        self.assertEqual(matcher._estimate_experience_level(['Barista with three years of customer-facing experience']), 2)
+        self.assertEqual(matcher._estimate_experience_level(['Front desk associate with six years of guest service experience']), 4)
+
+    def test_estimate_experience_level_uses_hospitality_roles_and_date_ranges(self):
+        matcher = ResumeJobMatcher()
+
+        self.assertEqual(matcher._estimate_experience_level(['Service Crew supporting front counter and beverage prep']), 2)
+        self.assertEqual(matcher._estimate_experience_level(['Pool Attendant | 2021-2024 | guest service and beverage support']), 2)
 
     def test_calculate_education_match_scores_elementary_only_as_thirty_percent(self):
         matcher = ResumeJobMatcher()

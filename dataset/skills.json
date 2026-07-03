@@ -144,7 +144,7 @@
   "Data Entry": {"category": "hard", "aliases": ["data entry", "data encoding"]},
   "Records Management": {"category": "hard", "aliases": ["records management", "document control", "filing"]},
   "Documentation": {"category": "hard", "aliases": ["documentation", "document preparation", "report documentation"]},
-  "Report Writing": {"category": "hard", "aliases": ["report writing", "report preparation", "reporting"]},
+  "Report Writing": {"category": "hard", "aliases": ["report writing", "report preparation"]},
   "Scheduling": {"category": "hard", "aliases": ["scheduling", "calendar management", "appointment scheduling", "roster management"]},
   "Recruitment": {"category": "hard", "aliases": ["recruitment", "recruiting", "hiring"]},
   "Talent Sourcing": {"category": "hard", "aliases": ["talent sourcing", "candidate sourcing", "sourcing"]},
