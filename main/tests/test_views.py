@@ -1632,6 +1632,7 @@ class ResumeAccessTests(TestCase):
 		response = self.client.get(reverse('serve_resume', args=[Path(self.applicant.resume.name).name]))
 
 		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
 		self.assertEqual(
 			response['Content-Type'],
 			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

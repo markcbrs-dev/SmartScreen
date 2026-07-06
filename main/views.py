@@ -57,7 +57,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.password_validation import validate_password as _validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
-from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.clickjacking import xframe_options_exempt, xframe_options_sameorigin
 from .services.job_parser import JobDescriptionParser
 from .services.skills import normalize_employment_type
 from django.conf import settings
@@ -1219,6 +1219,7 @@ def applicant_resume_preview(request, applicant_id):
 # To allow access: user must be active staff.
 # -----------------------------------------------------------------------
 @_staff_required
+@xframe_options_sameorigin
 def serve_resume(request, filename):
     """Serve a resume file to authenticated staff only.
 
