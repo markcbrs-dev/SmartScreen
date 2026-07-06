@@ -596,6 +596,73 @@ def _get_job_display_text(job: JobDescription) -> str:
             pass
 
 
+def _build_match_score_display_data(match_notes, *, fallback_overall_score: int | float = 0) -> dict[str, object]:
+    match_notes = match_notes if isinstance(match_notes, dict) else {}
+    raw_component_scores = match_notes.get('raw_component_scores', {}) if isinstance(match_notes.get('raw_component_scores'), dict) else {}
+    raw_breakdown = match_notes.get('breakdown', {}) if isinstance(match_notes.get('breakdown'), dict) else {}
+    raw_component_breakdown = {
+        'skill_score': raw_component_scores.get('skill_score', raw_breakdown.get('skill_score', 0)),
+        'experience_score': raw_component_scores.get('experience_score', raw_breakdown.get('experience_score', 0)),
+        'education_score': raw_component_scores.get('education_score', raw_breakdown.get('education_score', 0)),
+    }
+    score_weights = {
+        'skill_score': 30,
+        'experience_score': 50,
+        'education_score': 20,
+    }
+    certification_score = raw_component_scores.get('certification_score', raw_breakdown.get('certification_score'))
+    if isinstance(certification_score, (int, float)):
+        raw_component_breakdown['certification_score'] = certification_score
+        score_weights['certification_score'] = 20
+
+    weighted_component_breakdown = {
+        key: (raw_component_breakdown.get(key, 0) * weight) / 100
+        for key, weight in score_weights.items()
+    }
+    match_breakdown = {
+        key: round(value, 1)
+        for key, value in weighted_component_breakdown.items()
+    }
+    uncapped_component_total = round(sum(weighted_component_breakdown.values()), 1)
+
+    has_component_data = bool(raw_component_scores or raw_breakdown)
+    if has_component_data:
+        display_overall_score = round(min(100, uncapped_component_total), 1)
+    else:
+        display_overall_score = round(min(100, float(fallback_overall_score or 0)), 1)
+
+    score_labels = {
+        'skill_score': 'Skill Score',
+        'experience_score': 'Experience Score',
+        'education_score': 'Education Score',
+        'certification_score': 'Certification Bonus',
+    }
+    score_analysis_rows = [
+        {
+            'key': key,
+            'label': score_labels.get(key, key.replace('_', ' ').title()),
+            'raw_score': round(raw_component_breakdown.get(key, 0), 1),
+            'weight': weight,
+            'contribution': round(weighted_component_breakdown.get(key, 0), 1),
+            'is_bonus': key == 'certification_score',
+        }
+        for key, weight in score_weights.items()
+        if key in raw_component_breakdown
+    ]
+
+    return {
+        'raw_component_scores': raw_component_scores,
+        'raw_breakdown': raw_breakdown,
+        'raw_component_breakdown': raw_component_breakdown,
+        'score_weights': score_weights,
+        'match_breakdown': match_breakdown,
+        'score_analysis_rows': score_analysis_rows,
+        'uncapped_component_total': uncapped_component_total,
+        'display_overall_score': display_overall_score,
+        'score_cap_applied': uncapped_component_total > 100,
+    }
+
+
 def _build_apply_job_details(available_jobs: list[JobDescription]) -> list[dict[str, object]]:
     job_details = []
     for job in available_jobs:
@@ -740,6 +807,13 @@ _VALID_REDIRECT_PANELS = {'jobs', 'applicants', 'interview', 'status', 'dashboar
 
 @_staff_required
 def dashboard(request):
+    def get_dashboard_match_score(applicant: Applicant) -> float:
+        match_notes = applicant.match_notes if isinstance(applicant.match_notes, dict) else {}
+        return _build_match_score_display_data(
+            match_notes,
+            fallback_overall_score=applicant.match_score or 0,
+        )['display_overall_score']
+
     def redirect_to_dashboard(panel: str | None = None):
         url = reverse('dashboard')
         # Whitelist panel values to prevent arbitrary strings in the URL.
@@ -916,6 +990,7 @@ def dashboard(request):
 
     grouped_applicants: dict[tuple[str, object], list[Applicant]] = defaultdict(list)
     for applicant in applicants:
+        applicant.dashboard_match_score = get_dashboard_match_score(applicant)
         if applicant.applied_job_id:
             group_key = ('job', applicant.applied_job_id)
         elif applicant.position:
@@ -936,7 +1011,7 @@ def dashboard(request):
     }
 
     for group_key, group_items in grouped_applicants.items():
-        sorted_group = sorted(group_items, key=lambda a: (-(a.match_score or 0), a.created_at))
+        sorted_group = sorted(group_items, key=lambda a: (-(a.dashboard_match_score or 0), a.created_at))
         for rank_idx, applicant in enumerate(sorted_group, 1):
             applicant.rank = rank_idx
 
@@ -1024,50 +1099,10 @@ def applicant_detail(request, applicant_id):
     resume_name = os.path.basename(applicant.resume.name) if applicant.resume else ''
     resume_extension = os.path.splitext(resume_name)[1].lower()
     match_notes = applicant.match_notes if isinstance(applicant.match_notes, dict) else {}
-    raw_component_scores = match_notes.get('raw_component_scores', {}) if isinstance(match_notes.get('raw_component_scores'), dict) else {}
-    raw_breakdown = match_notes.get('breakdown', {}) if isinstance(match_notes.get('breakdown'), dict) else {}
-    raw_component_breakdown = {
-        'skill_score': raw_component_scores.get('skill_score', raw_breakdown.get('skill_score', 0)),
-        'experience_score': raw_component_scores.get('experience_score', raw_breakdown.get('experience_score', 0)),
-        'education_score': raw_component_scores.get('education_score', raw_breakdown.get('education_score', 0)),
-    }
-    score_weights = {
-        'skill_score': 30,
-        'experience_score': 50,
-        'education_score': 20,
-    }
-    certification_score = raw_component_scores.get('certification_score', raw_breakdown.get('certification_score'))
-    if isinstance(certification_score, (int, float)):
-        raw_component_breakdown['certification_score'] = certification_score
-        score_weights['certification_score'] = 20
-    weighted_component_breakdown = {
-        key: (raw_component_breakdown.get(key, 0) * weight) / 100
-        for key, weight in score_weights.items()
-    }
-    score_labels = {
-        'skill_score': 'Skill Score',
-        'experience_score': 'Experience Score',
-        'education_score': 'Education Score',
-        'certification_score': 'Certification Bonus',
-    }
-    score_analysis_rows = [
-        {
-            'key': key,
-            'label': score_labels.get(key, key.replace('_', ' ').title()),
-            'raw_score': round(raw_component_breakdown.get(key, 0), 1),
-            'weight': weight,
-            'contribution': round(weighted_component_breakdown.get(key, 0), 1),
-            'is_bonus': key == 'certification_score',
-        }
-        for key, weight in score_weights.items()
-        if key in raw_component_breakdown
-    ]
-    match_breakdown = {
-        key: round(value, 1)
-        for key, value in weighted_component_breakdown.items()
-    }
-    uncapped_component_total = round(sum(weighted_component_breakdown.values()), 1)
-    display_overall_score = round(min(100, uncapped_component_total), 1)
+    score_display = _build_match_score_display_data(
+        match_notes,
+        fallback_overall_score=applicant.match_score or 0,
+    )
     matched_job = match_notes.get('matched_job', {}) if isinstance(match_notes.get('matched_job'), dict) else {}
     matched_job_id = matched_job.get('job_id') if isinstance(matched_job.get('job_id'), int) else None
     job_position_scores = match_notes.get('all_job_scores', []) if isinstance(match_notes.get('all_job_scores'), list) else []
@@ -1117,11 +1152,11 @@ def applicant_detail(request, applicant_id):
         'resume_name': resume_name,
         'resume_extension': resume_extension,
         'resume_is_pdf': resume_extension == '.pdf',
-        'display_overall_score': display_overall_score,
-        'uncapped_component_total': uncapped_component_total,
-        'score_cap_applied': uncapped_component_total > 100,
-        'match_breakdown': match_breakdown,
-        'score_analysis_rows': score_analysis_rows,
+        'display_overall_score': score_display['display_overall_score'],
+        'uncapped_component_total': score_display['uncapped_component_total'],
+        'score_cap_applied': score_display['score_cap_applied'],
+        'match_breakdown': score_display['match_breakdown'],
+        'score_analysis_rows': score_display['score_analysis_rows'],
         'matching_skills': match_notes.get('matching_skills', []),
         'missing_skills': match_notes.get('missing_skills', []),
         'recommendation': match_notes.get('recommendation', {}),

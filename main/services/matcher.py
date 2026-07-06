@@ -568,6 +568,10 @@ class ResumeJobMatcher:
 
         return 1.0 if any(alias in source_text for alias in required_aliases) else 0.0
 
+    def has_certification_requirement(self, job: JobProfile) -> bool:
+        normalized_title = self._normalize_text(job.title or '')
+        return normalized_title in self._ROLE_CERTIFICATION_ALIASES
+
     def _score_year_count(self, years: int) -> int:
         if years <= 1:
             return 1

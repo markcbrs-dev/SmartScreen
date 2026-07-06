@@ -1135,6 +1135,45 @@ class JobUploadTests(TestCase):
 		self.assertGreaterEqual(applicant.match_score, 70)
 		self.assertEqual(applicant.status, 'INTERVIEW')
 
+	def test_dashboard_displays_overall_score_from_match_notes(self):
+		Applicant.objects.create(
+			first_name='Display',
+			last_name='Score',
+			contact_number='+63 912 000 7788',
+			email='display-score@example.com',
+			resume=build_docx_file(
+				'display-score.docx',
+				[
+					'Display Score',
+					'display-score@example.com',
+					'+63 912 000 7788',
+				],
+			),
+			position='Backend Developer',
+			match_score=20,
+			match_notes={
+				'overall_score': 86,
+				'raw_component_scores': {
+					'skill_score': 74,
+					'experience_score': 88,
+					'education_score': 100,
+				},
+				'breakdown': {
+					'skill_score': 22,
+					'experience_score': 44,
+					'education_score': 20,
+				},
+				'matching_skills': ['Python'],
+			},
+		)
+
+		response = self.client.get(reverse('dashboard'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['applicants'][0].dashboard_match_score, 86.2)
+		self.assertContains(response, 'data-score="86.2"', html=False)
+		self.assertContains(response, 'db-match-pct">86.2%</span>', html=False)
+
 	def test_dashboard_renders_score_analysis_dialog_for_scored_applicants(self):
 		job = replace_active_job_description(build_text_file(
 			'backend-role.txt',
@@ -1149,7 +1188,7 @@ class JobUploadTests(TestCase):
 			position=job.title,
 			applied_job=job,
 			job_preference_locked=True,
-			match_score=88,
+			match_score=40,
 			match_notes={
 				'overall_score': 40,
 				'target_job_id': job.id,
@@ -1426,6 +1465,119 @@ class ResumeAccessTests(TestCase):
 		self.assertEqual(response.context['match_breakdown']['certification_score'], 20.0)
 		self.assertContains(response, 'The combined component total is capped when showing the final overall score.')
 		self.assertContains(response, '100%')
+
+	def test_applicant_detail_refreshes_stale_match_score_mismatch(self):
+		self.client.force_login(self.staff_user)
+		job = replace_active_job_description(build_text_file(
+			'backend-role.txt',
+			'Job Title: Backend Engineer\n'
+			'Company: SmartScreen Labs\n'
+			'Location: Remote\n'
+			'Python Django APIs\n'
+			'Bachelor of Science in Computer Science\n',
+		))
+		applicant = Applicant.objects.create(
+			first_name='Mismatch',
+			last_name='Applicant',
+			contact_number='+63 912 123 9876',
+			email='mismatch@example.com',
+			resume=build_docx_file(
+				'mismatch.docx',
+				[
+					'Mismatch Applicant',
+					'mismatch@example.com',
+					'+63 912 123 9876',
+					'Python Django REST API',
+					'Bachelor of Science in Computer Science',
+				],
+			),
+			applied_job=job,
+			job_preference_locked=True,
+			position=job.title,
+			match_score=20,
+			resume_text='Mismatch Applicant\nPython\nDjango\nREST API',
+			parsed_skills=['Python', 'Django', 'REST API'],
+			parsed_education=['Bachelor of Science in Computer Science'],
+			match_notes={
+				'overall_score': 45,
+				'target_job_id': job.id,
+				'scored_job_ids': [job.id],
+				'all_job_scores': [
+					{'job_id': job.id, 'job_title': job.title, 'overall_score': 45},
+				],
+				'breakdown': {
+					'skill_score': 15,
+					'experience_score': 10,
+					'education_score': 20,
+				},
+			},
+		)
+
+		response = self.client.get(reverse('applicant_detail', args=[applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		applicant.refresh_from_db()
+		self.assertEqual(applicant.match_score, applicant.match_notes.get('overall_score'))
+		self.assertNotEqual(applicant.match_score, 20)
+		self.assertEqual(response.context['matched_job']['job_id'], job.id)
+		self.assertEqual(response.context['display_overall_score'], applicant.match_notes.get('overall_score'))
+
+	def test_applicant_detail_refreshes_certification_eligible_legacy_scores(self):
+		self.client.force_login(self.staff_user)
+		job = replace_active_job_description(build_text_file(
+			'barista-role.txt',
+			'Job Title: Barista\n'
+			'Company: SmartScreen Cafe\n'
+			'Location: Manila\n'
+			'Prepare beverages and assist customers.\n'
+			'Customer service and cash handling.\n',
+		))
+		applicant = Applicant.objects.create(
+			first_name='Legacy',
+			last_name='Barista',
+			contact_number='+63 912 555 6677',
+			email='legacy-barista@example.com',
+			resume=build_docx_file(
+				'legacy-barista.docx',
+				[
+					'Legacy Barista',
+					'legacy-barista@example.com',
+					'+63 912 555 6677',
+					'Customer service and beverage preparation',
+				],
+			),
+			applied_job=job,
+			job_preference_locked=True,
+			position=job.title,
+			match_score=40,
+			resume_text='Legacy Barista\nCustomer service and beverage preparation',
+			parsed_skills=['Customer Service'],
+			parsed_education=[],
+			parsed_experience=[],
+			match_notes={
+				'overall_score': 40,
+				'target_job_id': job.id,
+				'scored_job_ids': [job.id],
+				'all_job_scores': [
+					{'job_id': job.id, 'job_title': job.title, 'overall_score': 40},
+				],
+				'breakdown': {
+					'skill_score': 12,
+					'experience_score': 20,
+					'education_score': 8,
+				},
+			},
+		)
+
+		response = self.client.get(reverse('applicant_detail', args=[applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		applicant.refresh_from_db()
+		self.assertIn('certification_score', applicant.match_notes.get('raw_component_scores', {}))
+		self.assertIn('certification_score', applicant.match_notes.get('breakdown', {}))
+		self.assertEqual(response.context['match_breakdown']['certification_score'], 0.0)
+		self.assertContains(response, 'Certification Bonus')
+		self.assertContains(response, '0%')
 
 	def test_applicant_resume_preview_requires_staff_login(self):
 		response = self.client.get(reverse('applicant_resume_preview', args=[self.applicant.id]))

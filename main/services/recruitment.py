@@ -350,12 +350,16 @@ def _repair_applicant_name(applicant) -> None:
 # DEBUG: if scores look wrong, set a breakpoint here or in matcher.py.
 # -----------------------------------------------------------------------
 def refresh_applicant_match(applicant, active_job: JobDescription | None):
-    def has_current_breakdown(match_notes, target_job_id, available_job_ids) -> bool:
+    def has_current_breakdown(match_notes, target_job_id, available_job_ids, current_match_score, certification_component_expected) -> bool:
         if not isinstance(match_notes, dict) or not match_notes:
             return False
 
         breakdown = match_notes.get('breakdown')
         if not isinstance(breakdown, dict) or not breakdown:
+            return False
+
+        raw_component_scores = match_notes.get('raw_component_scores')
+        if raw_component_scores is not None and not isinstance(raw_component_scores, dict):
             return False
 
         allowed_keys = {'skill_score', 'experience_score', 'education_score', 'certification_score'}
@@ -369,12 +373,23 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
         if not isinstance(overall_score, int):
             return False
 
+        if not isinstance(current_match_score, int) or current_match_score != overall_score:
+            return False
+
         contribution_total = sum(
             value for value in breakdown.values()
             if isinstance(value, int)
         )
         if contribution_total != overall_score:
             return False
+
+        if certification_component_expected:
+            if 'certification_score' not in breakdown:
+                return False
+            if not isinstance(raw_component_scores, dict) or 'certification_score' not in raw_component_scores:
+                return False
+            if not isinstance(raw_component_scores.get('certification_score'), int):
+                return False
 
         if match_notes.get('target_job_id') != target_job_id:
             return False
@@ -427,13 +442,22 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
         available_jobs = [target_job]
         available_job_ids = [target_job.id]
 
+    target_job_profile = build_job_profile_from_model(target_job)
+    certification_component_expected = get_matcher().has_certification_requirement(target_job_profile)
+
     # Skip re-scoring if the applicant already has a valid score for this exact job.
     # match_notes is {} by default and non-empty after the first score, so it is a
     # reliable signal that scoring has already run.  The score only becomes stale
     # when the applicant's job FK changes (e.g. old job deleted → SET_NULL) or when
     # a new job is uploaded and this applicant has no locked preference — in both
     # cases applied_job_id will differ from target_job.id, so the guard is bypassed.
-    if applicant.applied_job_id == target_job.id and has_current_breakdown(applicant.match_notes, target_job.id, available_job_ids):
+    if applicant.applied_job_id == target_job.id and has_current_breakdown(
+        applicant.match_notes,
+        target_job.id,
+        available_job_ids,
+        applicant.match_score,
+        certification_component_expected,
+    ):
         return applicant, None
 
     # Lazy resume parsing: only parse the file if structured fields are not already stored
@@ -467,7 +491,7 @@ def refresh_applicant_match(applicant, active_job: JobDescription | None):
     if target_match_result is None:
         target_match_result = get_matcher().match_resume_to_job(
             resume_profile,
-            build_job_profile_from_model(target_job),  # Convert JobDescription ORM object → JobProfile dataclass
+            target_job_profile,  # Convert JobDescription ORM object → JobProfile dataclass
         )
         scored_jobs = [(target_job, target_match_result)]
 
