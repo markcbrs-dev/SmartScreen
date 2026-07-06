@@ -1626,6 +1626,29 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, reverse('serve_resume', args=[Path(pdf_applicant.resume.name).name]))
 		self.assertContains(response, '<iframe', html=False)
 
+	def test_staff_can_view_resume_preview_text_when_pdf_file_is_missing(self):
+		self.client.force_login(self.staff_user)
+		pdf_applicant = Applicant.objects.create(
+			first_name='Missing',
+			last_name='Pdf',
+			contact_number='+63 912 888 9900',
+			email='missing-pdf@example.com',
+			resume=SimpleUploadedFile(
+				'missing-pdf.pdf',
+				b'%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF',
+				content_type='application/pdf',
+			),
+			resume_text='Recovered extracted resume text',
+		)
+
+		with patch.object(pdf_applicant.resume.storage, 'exists', return_value=False):
+			response = self.client.get(reverse('applicant_resume_preview', args=[pdf_applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'The stored PDF resume file is unavailable')
+		self.assertContains(response, 'Recovered extracted resume text')
+		self.assertNotContains(response, '<iframe', html=False)
+
 	def test_staff_can_view_resume_from_protected_route(self):
 		self.client.force_login(self.staff_user)
 

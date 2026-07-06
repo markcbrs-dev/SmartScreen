@@ -185,6 +185,12 @@
       <span class="preview-badge">{{ resume_extension|default:"file"|cut:"." }}</span>
     </div>
 
+    {% if preview_warning %}
+      <div class="preview-empty" style="margin-bottom: 16px;">
+        {{ preview_warning }}
+      </div>
+    {% endif %}
+
     {% if pdf_page_images %}
       {% for image_data in pdf_page_images %}
         <div class="preview-page">

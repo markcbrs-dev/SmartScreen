@@ -1187,11 +1187,15 @@ def applicant_resume_preview(request, applicant_id):
         'docx_preview_pages': [],
         'docx_preview_blocks': [],
         'preview_text': applicant.resume_text or '',
+        'preview_warning': '',
     }
 
+    resume_exists = applicant.resume.storage.exists(applicant.resume.name)
+
     if resume_extension == '.pdf':
-        if not applicant.resume.storage.exists(applicant.resume.name):
-            raise Http404
+        if not resume_exists:
+            preview_context['preview_warning'] = 'The stored PDF resume file is unavailable. Showing extracted resume text instead.'
+            return render(request, 'main/applicant_resume_preview.html', preview_context)
         try:
             with applicant.resume.open('rb') as resume_handle:
                 preview_context['pdf_page_images'] = _build_pdf_preview_images(resume_handle.read())
@@ -1200,8 +1204,9 @@ def applicant_resume_preview(request, applicant_id):
         return render(request, 'main/applicant_resume_preview.html', preview_context)
 
     if resume_extension == '.docx':
-        if not applicant.resume.storage.exists(applicant.resume.name):
-            raise Http404
+        if not resume_exists:
+            preview_context['preview_warning'] = 'The stored DOCX resume file is unavailable. Showing extracted resume text instead.'
+            return render(request, 'main/applicant_resume_preview.html', preview_context)
         preview_context['preview_text'] = ''
         return render(request, 'main/applicant_resume_preview.html', preview_context)
 
