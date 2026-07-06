@@ -195,6 +195,19 @@
           >
         </div>
       {% endfor %}
+    {% elif resume_extension == '.pdf' and resume_source_url %}
+      {% if pdf_preview_fallback %}
+        <div class="preview-empty" style="margin-bottom: 16px;">
+          PDF image preview is unavailable right now. Showing the browser's built-in PDF viewer instead.
+        </div>
+      {% endif %}
+      <div class="preview-page">
+        <iframe
+          src="{{ resume_source_url }}"
+          title="PDF resume preview for {{ applicant.get_full_name }}"
+          style="display:block; width:100%; min-height: 1120px; border:0; background:#fff;"
+        ></iframe>
+      </div>
     {% elif resume_extension == '.docx' and resume_source_url %}
       <div class="preview-docx-host">
         <div id="docxPreviewStatus" class="preview-loading">Loading DOCX preview...</div>

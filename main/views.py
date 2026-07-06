@@ -1183,6 +1183,7 @@ def applicant_resume_preview(request, applicant_id):
         'resume_extension': resume_extension,
         'resume_source_url': resume_source_url,
         'pdf_page_images': [],
+        'pdf_preview_fallback': False,
         'docx_preview_pages': [],
         'docx_preview_blocks': [],
         'preview_text': applicant.resume_text or '',
@@ -1191,8 +1192,11 @@ def applicant_resume_preview(request, applicant_id):
     if resume_extension == '.pdf':
         if not applicant.resume.storage.exists(applicant.resume.name):
             raise Http404
-        with applicant.resume.open('rb') as resume_handle:
-            preview_context['pdf_page_images'] = _build_pdf_preview_images(resume_handle.read())
+        try:
+            with applicant.resume.open('rb') as resume_handle:
+                preview_context['pdf_page_images'] = _build_pdf_preview_images(resume_handle.read())
+        except (OSError, ValueError):
+            preview_context['pdf_preview_fallback'] = True
         return render(request, 'main/applicant_resume_preview.html', preview_context)
 
     if resume_extension == '.docx':

@@ -2,6 +2,7 @@ import importlib.util
 from io import BytesIO
 from pathlib import Path
 from unittest import skipUnless
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core import mail
@@ -1600,6 +1601,30 @@ class ResumeAccessTests(TestCase):
 		self.assertContains(response, 'Loading DOCX preview...')
 		self.assertContains(response, 'docxPreviewContainer')
 		self.assertNotContains(response, '<pre class="preview-text">', html=False)
+
+	def test_staff_can_fall_back_to_inline_pdf_preview_when_image_rendering_fails(self):
+		self.client.force_login(self.staff_user)
+		pdf_applicant = Applicant.objects.create(
+			first_name='Pdf',
+			last_name='Applicant',
+			contact_number='+63 912 777 8899',
+			email='pdf-applicant@example.com',
+			resume=SimpleUploadedFile(
+				'pdf-applicant.pdf',
+				b'%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF',
+				content_type='application/pdf',
+			),
+			resume_text='Pdf Applicant',
+		)
+
+		with patch('main.views._build_pdf_preview_images', side_effect=ValueError('preview failed')):
+			response = self.client.get(reverse('applicant_resume_preview', args=[pdf_applicant.id]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response['Content-Type'], 'text/html; charset=utf-8')
+		self.assertContains(response, 'browser\'s built-in PDF viewer instead')
+		self.assertContains(response, reverse('serve_resume', args=[Path(pdf_applicant.resume.name).name]))
+		self.assertContains(response, '<iframe', html=False)
 
 	def test_staff_can_view_resume_from_protected_route(self):
 		self.client.force_login(self.staff_user)
