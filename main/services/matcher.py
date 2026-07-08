@@ -25,7 +25,7 @@ HOW TO MODIFY
     Adjust weights          → edit the component list in match_resume_to_job()
   Change skill vocabulary → edit _SKILL_VOCAB (used as fallback when JD has no skills)
                               Keep in sync with _load_common_skills() in resume_parser.py
-  Change semantic threshold → edit `threshold = 0.72` in calculate_skill_match()
+    Change semantic threshold → edit `threshold = 0.50` in calculate_skill_match()
   Change experience mapping → edit self.experience_mapping in __init__()
   Change education mapping  → edit self.education_mapping in __init__()
   Change skill floor        → edit the `if skill_score == 0.0` block at the end of
@@ -384,7 +384,7 @@ class ResumeJobMatcher:
             return 0.5, [], []
 
         model = get_embedding_model()
-        threshold = 0.78
+        threshold = 0.50
 
         resume_hard, resume_soft = split_skills_by_category(resume_list)
         required_hard, required_soft = split_skills_by_category(required)
