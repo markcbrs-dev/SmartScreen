@@ -229,10 +229,18 @@
                     <span class="db-status db-status-{{ a.status|lower }}">{{ a.status }}</span>
                   </td>
                   <td class="db-match-cell">
-                    <div class="db-bar-bg">
-                      <div class="db-bar-fill" data-score="{{ a.dashboard_match_score|floatformat:"-1" }}"></div>
+                    <div
+                      class="progress"
+                      role="progressbar"
+                      aria-label="Match score"
+                      aria-valuenow="{{ a.dashboard_match_score|floatformat:"-1" }}"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                    >
+                      <div class="progress-bar" data-score="{{ a.dashboard_match_score|floatformat:"-1" }}">
+                        {{ a.dashboard_match_score|floatformat:"-1" }}%
+                      </div>
                     </div>
-                    <span class="db-match-pct">{{ a.dashboard_match_score|floatformat:"-1" }}%</span>
                     {% if a.match_notes.matching_skills %}
                       <div class="db-match-caption">Matched: {{ a.match_notes.matching_skills|slice:":3"|join:", " }}</div>
                     {% endif %}
@@ -331,10 +339,18 @@
                     <div class="db-position-title">{{ a.position|default:"—" }}</div>
                   </td>
                   <td class="db-match-cell">
-                    <div class="db-bar-bg">
-                      <div class="db-bar-fill" data-score="{{ a.dashboard_match_score|floatformat:"-1" }}"></div>
+                    <div
+                      class="progress"
+                      role="progressbar"
+                      aria-label="Match score"
+                      aria-valuenow="{{ a.dashboard_match_score|floatformat:"-1" }}"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                    >
+                      <div class="progress-bar" data-score="{{ a.dashboard_match_score|floatformat:"-1" }}">
+                        {{ a.dashboard_match_score|floatformat:"-1" }}%
+                      </div>
                     </div>
-                    <span class="db-match-pct">{{ a.dashboard_match_score|floatformat:"-1" }}%</span>
                   </td>
                   <td>{{ a.created_at|date:"M j, Y" }}</td>
                   <td class="db-actions-cell">
@@ -997,9 +1013,17 @@
     window.history.replaceState({}, '', currentUrl);
   }
 
-  document.querySelectorAll('.db-bar-fill').forEach(function (bar) {
+  document.querySelectorAll('.db-match-cell .progress').forEach(function (progress) {
+    const bar = progress.querySelector('.progress-bar');
+    if (!bar) {
+      return;
+    }
+
     const score = Math.max(0, Math.min(100, Number(bar.dataset.score || 0)));
+    const scoreClass = score >= 80 ? 'text-bg-success' : score >= 60 ? 'text-bg-warning' : 'text-bg-danger';
     bar.style.width = score + '%';
+    bar.classList.add(scoreClass);
+    progress.setAttribute('aria-valuenow', String(score));
   });
 
   document.querySelectorAll('.db-score-bar-fill').forEach(function (bar) {

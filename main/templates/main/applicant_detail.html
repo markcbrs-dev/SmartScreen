@@ -20,9 +20,9 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div>
-    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm mb-3">Back to Dashboard</a>
+    <a href="{% url 'dashboard' %}" class="btn btn-primary mb-3">Back to Dashboard</a>
     <h1 class="h3 mb-1">{{ applicant.get_full_name }}</h1>
-    <p class="text-muted mb-0">{{ applicant.position|default:"Pending match" }}{% if applicant.applied_job %} · {{ applicant.applied_job.title }}{% endif %}</p>
+    <p class="text-muted mb-0">{{ applicant.position|default:"Pending match" }}</p>
   </div>
   <div class="text-md-end">
     <div><span class="badge text-bg-primary">{{ applicant.status }}</span></div>
@@ -167,30 +167,56 @@
         <div class="mb-4">
           <h3 class="h6">Recommendation</h3>
           {% if recommendations %}
-            <ul class="mb-0 ps-3">
-              {% for item in recommendations %}
-                <li><strong>{{ item.job_title }}</strong> - {{ item.overall_score }}%</li>
-              {% endfor %}
-            </ul>
+            <div class="table-responsive border rounded">
+              <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Job Position</th>
+                    <th scope="col" class="text-end">Overall Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in recommendations %}
+                    <tr>
+                      <td class="fw-medium">{{ item.job_title }}</td>
+                      <td class="text-end">
+                        <span class="badge {% if item.overall_score >= 80 %}text-bg-success{% elif item.overall_score >= 60 %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ item.overall_score }}%</span>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
           {% else %}
             <p class="text-muted mb-0">No Recommendations available.</p>
           {% endif %}
         </div>
 
         <div class="mb-4">
-          <h3 class="h6">Other Job Position Scores</h3>
-          {% if job_position_scores %}
-            <div class="list-group list-group-flush border rounded overflow-hidden">
-              {% for item in job_position_scores %}
-                <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
-                  <span class="fw-medium">{{ item.job_title }}</span>
-                  <span class="badge text-bg-primary">{{ item.overall_score }}%</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">No job position scores available.</p>
-          {% endif %}
+          <p class="d-inline-flex gap-1 mb-2">
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-bs-toggle="button"
+              id="otherJobScoresToggle"
+              aria-expanded="false"
+              aria-controls="otherJobScoresContent"
+            >Other Job Position Scores</button>
+          </p>
+          <div id="otherJobScoresContent" class="mt-2" hidden>
+            {% if job_position_scores %}
+              <div class="list-group list-group-flush border rounded overflow-hidden">
+                {% for item in job_position_scores %}
+                  <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
+                    <span class="fw-medium">{{ item.job_title }}</span>
+                    <span class="badge {% if item.overall_score >= 80 %}text-bg-success{% elif item.overall_score >= 60 %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ item.overall_score }}%</span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">No job position scores available.</p>
+            {% endif %}
+          </div>
         </div>
 
         <div class="mb-4">
@@ -250,4 +276,28 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script>
+    (function () {
+      function setupToggle(toggleId, contentId) {
+        const toggle = document.getElementById(toggleId);
+        const content = document.getElementById(contentId);
+
+        if (!toggle || !content) {
+          return;
+        }
+
+        toggle.addEventListener('click', function () {
+          const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+          toggle.setAttribute('aria-expanded', String(!isExpanded));
+          content.hidden = isExpanded;
+        });
+      }
+
+      setupToggle('otherJobScoresToggle', 'otherJobScoresContent');
+    })();
+  </script>
 {% endblock %}
